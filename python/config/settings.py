@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Document Store
     upload_dir: str = "./uploads"
 
+    @property
+    def has_usable_llm_key(self) -> bool:
+        """Return false for intentionally local placeholder credentials."""
+        key = self.openai_api_key.strip()
+        placeholders = ("placeholder", "your-api-key", "not-a-real-key")
+        return bool(key) and not any(token in key.lower() for token in placeholders)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

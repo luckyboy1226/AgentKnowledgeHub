@@ -51,14 +51,8 @@ async def lifespan(app: FastAPI):
     """初始化知识图谱和工作流"""
     global mongo_client
     os.makedirs(settings.upload_dir, exist_ok=True)   # 确保上传目录存在
-    try:
-        await vector_store.init()    # 初始化向量存储
-    except Exception:
-        pass
-    try:
-        await knowledge_graph.init()    # 初始化知识图谱
-    except Exception:
-        pass
+    await vector_store.init()    # 初始化向量存储；失败时阻止服务伪健康启动
+    await knowledge_graph.init()    # 初始化知识图谱；失败时阻止服务伪健康启动
 
     # 初始化 MongoDB checkpointer
     from pymongo import MongoClient
@@ -162,6 +156,12 @@ async def upload_document(file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         shutil.copyfileobj(file.file, f)    # 复制文件内容到保存路径
 
+    if not settings.has_usable_llm_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Document saved, but ingestion requires a configured non-placeholder OPENAI_API_KEY.",
+        )
+
     try:
         ingest_wf = workflows.get("ingest")
         if not ingest_wf:
@@ -242,6 +242,11 @@ async def delete_document(file_name: str):
 @app.post("/api/qa/ask", response_model=QuestionResponse, tags=["智能问答"])
 async def ask_question(req: QuestionRequest):
     """智能问答 — 混合检索 + 知识图谱推理 + 记忆系统"""
+    if not settings.has_usable_llm_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Question answering requires a configured non-placeholder OPENAI_API_KEY.",
+        )
     qa_wf = workflows.get("qa")      ### 从工作流字典，获取智能问答工作流
     if not qa_wf:
         raise HTTPException(status_code=503, detail="QA workflow not initialized")
