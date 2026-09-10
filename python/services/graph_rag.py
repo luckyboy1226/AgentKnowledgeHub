@@ -22,9 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
-from config import settings
+from providers.chat import ChatProvider
 from services.knowledge_graph import KnowledgeGraphService
 from services.vector_store import VectorStoreService
 
@@ -66,15 +64,11 @@ class GraphRAGPipeline:
         self,
         vector_store: VectorStoreService,
         knowledge_graph: KnowledgeGraphService,
+        chat_provider: ChatProvider,
     ) -> None:
         self.vector_store = vector_store
         self.knowledge_graph = knowledge_graph
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            temperature=0,
-        )
+        self.llm = chat_provider
 
     async def retrieve(self, query: str, top_k: int = 10) -> list[GraphRAGContext]:
         """

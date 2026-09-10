@@ -11,48 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_openai import OpenAIEmbeddings
-
 from agents.doc_parser_agent import DocumentChunk
 from config import settings
-
-
-class DashScopeEmbeddings:
-    """兼容阿里云 DashScope 的嵌入模型"""
-    
-    def __init__(self, api_key: str, model: str = "text-embedding-v1", dimensions: int = 1536):
-        self.api_key = api_key
-        self.model = model
-        self.dimensions = dimensions
-        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        """批量生成嵌入向量"""
-        import httpx
-        results = []
-        for text in texts:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.model,
-                        "input": text[:8191],  # DashScope 限制
-                        "dimensions": self.dimensions,
-                    },
-                    timeout=30
-                )
-                response.raise_for_status()
-                data = response.json()
-                results.append(data["data"][0]["embedding"])
-        return results
-    
-    async def aembed_query(self, text: str) -> list[float]:
-        """生成单个查询向量"""
-        return (await self.aembed_documents([text]))[0]
+from providers.embeddings import EmbeddingProvider, EmbeddingProviderError
 
 
 class VectorStoreService:
@@ -60,20 +21,8 @@ class VectorStoreService:
 
     COLLECTION_NAME = "knowledge_chunks"
 
-    def __init__(self) -> None:
-        # 根据 base_url 判断是否使用 DashScope
-        if "dashscope" in settings.openai_base_url.lower():
-            self.embeddings = DashScopeEmbeddings(
-                api_key=settings.openai_api_key,
-                model=settings.embedding_model,
-                dimensions=settings.embedding_dimensions,
-            )
-        else:
-            self.embeddings = OpenAIEmbeddings(
-                model=settings.embedding_model,
-                api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url,
-            )
+    def __init__(self, embeddings: EmbeddingProvider) -> None:
+        self.embeddings = embeddings
         self._store: Any = None
         self._backend = settings.vector_store_type
 
@@ -127,6 +76,8 @@ class VectorStoreService:
         """语义搜索，返回 (文档, 分数) 列表"""
         if self._backend == "chroma":
             q_vec = await self.embeddings.aembed_query(query)
+            if len(q_vec) != self.embeddings.dimensions:
+                raise EmbeddingProviderError("Query embedding dimension does not match provider configuration.")
             results = self._store.query(query_embeddings=[q_vec], n_results=top_k, include=["documents", "metadatas", "distances"])
             out: list[tuple[dict, float]] = []
             docs = results.get("documents", [[]])[0]

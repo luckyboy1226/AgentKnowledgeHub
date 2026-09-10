@@ -18,14 +18,16 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from config import settings
+from providers.embeddings import EmbeddingProvider
 from .memory_models import MemoryContext, MemoryEvent, Personality, UserProfile, Conversation, Message
 
 
 class MemoryService:
     """三层记忆管理系统：短期记忆+长期记忆+用户画像"""
     
-    def __init__(self, db_path: str = None):
+    def __init__(self, embeddings: EmbeddingProvider, db_path: str = None):
         self.db_path = db_path or settings.memory_db_path
+        self.embeddings = embeddings
         self.short_term: List[MemoryEvent] = []
         self._init_database()
     
@@ -126,22 +128,7 @@ class MemoryService:
         
         text_to_embed = f"{event.user_input} {event.agent_response} {event.summary}"
         if text_to_embed.strip():
-            from langchain_openai import OpenAIEmbeddings
-            
-            if "dashscope" in settings.openai_base_url.lower():
-                from .vector_store import DashScopeEmbeddings
-                embedder = DashScopeEmbeddings(
-                    api_key=settings.openai_api_key,
-                    model=settings.embedding_model,
-                    dimensions=settings.embedding_dimensions,
-                )
-            else:
-                embedder = OpenAIEmbeddings(
-                    model=settings.embedding_model,
-                    api_key=settings.openai_api_key,
-                    base_url=settings.openai_base_url,
-                )
-            event.embedding = await embedder.aembed_query(text_to_embed.strip())
+            event.embedding = await self.embeddings.aembed_query(text_to_embed.strip())
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -165,24 +152,8 @@ class MemoryService:
     async def retrieve_long_term(self, query: str, top_k: int = 5) -> List[MemoryEvent]:
         """检索长期记忆（根据用户的问题，找到相关的历史记忆）"""
         if not query.strip():
-            query_embedding = [0.0] * settings.embedding_dimensions
-        else:
-            from langchain_openai import OpenAIEmbeddings
-            
-            if "dashscope" in settings.openai_base_url.lower():
-                from .vector_store import DashScopeEmbeddings
-                embedder = DashScopeEmbeddings(
-                    api_key=settings.openai_api_key,
-                    model=settings.embedding_model,
-                    dimensions=settings.embedding_dimensions,
-                )
-            else:
-                embedder = OpenAIEmbeddings(
-                    model=settings.embedding_model,
-                    api_key=settings.openai_api_key,
-                    base_url=settings.openai_base_url,
-                )
-            query_embedding = await embedder.aembed_query(query.strip())
+            return []
+        query_embedding = await self.embeddings.aembed_query(query.strip())
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -203,13 +174,11 @@ class MemoryService:
         scored_memories = []
         for row in rows:
             try:
-                embedding = (
-                    pickle.loads(row[7])
-                    if row[7]
-                    else [0.0] * settings.embedding_dimensions
-                )
-            except:
-                embedding = [0.0] * settings.embedding_dimensions
+                embedding = pickle.loads(row[7]) if row[7] else None
+            except Exception:
+                embedding = None
+            if not isinstance(embedding, list) or len(embedding) != self.embeddings.dimensions:
+                continue
             
             similarity = np.dot(query_embedding, embedding) / (
                 np.linalg.norm(query_embedding) * np.linalg.norm(embedding) + 1e-8

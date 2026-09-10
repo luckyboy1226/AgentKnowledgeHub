@@ -15,10 +15,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
 from agents.doc_parser_agent import DocumentChunk
-from config import settings
+from providers.chat import ChatProvider
 
 EXTRACTION_SYSTEM_PROMPT = """\
 你是一个专业的知识抽取引擎。给定一段文本，请提取其中的：
@@ -93,13 +91,8 @@ class KnowledgeExtractAgent:
 
     BATCH_SIZE = 5
 
-    def __init__(self) -> None:
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            temperature=0,
-        )
+    def __init__(self, chat_provider: ChatProvider) -> None:
+        self.llm = chat_provider
 
     # ── public API ───────────────────────────────────────────
 

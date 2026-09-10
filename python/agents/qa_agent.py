@@ -19,9 +19,8 @@ from enum import Enum
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
 from config import settings
+from providers.chat import ChatProvider
 from services.memory_models import MemoryEvent, Personality, UserProfile
 
 
@@ -138,16 +137,12 @@ class QAAgent:
 
     def __init__(
         self,
+        chat_provider: ChatProvider,
         vector_store: Any = None,
         knowledge_graph: Any = None,
         memory_service: Any = None,
     ) -> None:
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            temperature=0,
-        )
+        self.llm = chat_provider
         self.vector_store = vector_store
         self.knowledge_graph = knowledge_graph
         self.memory_service = memory_service

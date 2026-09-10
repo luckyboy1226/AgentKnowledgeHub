@@ -33,6 +33,7 @@ from agents.knowledge_update_agent import (
     UpdateResult,
 )
 from agents.qa_agent import QAAgent, QAResult
+from providers.chat import ChatProvider
 from services.knowledge_graph import KnowledgeGraphService
 from services.memory_service import MemoryService
 from services.vector_store import VectorStoreService
@@ -160,6 +161,7 @@ class UpdateState(dict):
 # ── Workflow Builder ─────────────────────────────────────────
 
 def build_knowledge_graph_workflow(
+    chat_provider: ChatProvider,
     vector_store: VectorStoreService | None = None,
     knowledge_graph: KnowledgeGraphService | None = None,
     memory_service: MemoryService | None = None,
@@ -172,9 +174,10 @@ def build_knowledge_graph_workflow(
         checkpointer: LangGraph checkpoint saver (如 MongoDBSaver)，
                       传入后每个节点执行完自动持久化状态。
     """
-    doc_parser = DocParserAgent()    # 文档解析智能体
-    extractor = KnowledgeExtractAgent()    # 知识提取智能体
+    doc_parser = DocParserAgent(chat_provider)    # 文档解析智能体
+    extractor = KnowledgeExtractAgent(chat_provider)    # 知识提取智能体
     qa_agent = QAAgent(               # 问答智能体
+        chat_provider=chat_provider,
         vector_store=vector_store,
         knowledge_graph=knowledge_graph,
         memory_service=memory_service

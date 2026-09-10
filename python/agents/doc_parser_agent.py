@@ -17,9 +17,7 @@ from enum import Enum
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
-from config import settings
+from providers.chat import ChatProvider
 
 
 class DocType(str, Enum):
@@ -69,13 +67,8 @@ class DocParserAgent:
     CHUNK_SIZE = 512
     CHUNK_OVERLAP = 64
 
-    def __init__(self) -> None:
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            temperature=0,
-        )
+    def __init__(self, chat_provider: ChatProvider) -> None:
+        self.llm = chat_provider
 
     # ── public API ───────────────────────────────────────────
 

@@ -13,10 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_openai import OpenAIEmbeddings
-
 from agents.doc_parser_agent import DocType, DocumentChunk
-from config import settings
+from providers.embeddings import EmbeddingProvider
 
 
 @dataclass
@@ -43,12 +41,8 @@ class MultimodalService:
         DocType.IMAGE.value: 0.85,
     }
 
-    def __init__(self) -> None:
-        self.embeddings = OpenAIEmbeddings(
-            model=settings.embedding_model,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-        )
+    def __init__(self, embeddings: EmbeddingProvider) -> None:
+        self.embeddings = embeddings
 
     async def embed_chunks(self, chunks: list[DocumentChunk]) -> list[list[float]]:
         """批量嵌入文档块"""

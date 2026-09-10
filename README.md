@@ -250,6 +250,31 @@ cd python
 cp .env.example .env
 ```
 
+### 模型 Provider 配置
+
+Chat 与 Embedding 可以独立选择兼容 OpenAI API 的供应商；推荐使用显式配置，且不要提交 `python/.env`。
+
+```env
+# Qwen Chat + Qwen Embedding
+CHAT_PROVIDER=qwen
+CHAT_API_KEY=your-chat-api-key
+CHAT_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+CHAT_MODEL=qwen-plus
+EMBEDDING_PROVIDER=qwen
+EMBEDDING_API_KEY=your-embedding-api-key
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_MODEL=text-embedding-v4
+EMBEDDING_DIMENSIONS=1536
+```
+
+DeepSeek 目前只用于 Chat，可与 Qwen Embedding 组合：将 `CHAT_PROVIDER` 设为 `deepseek`，并填写 DeepSeek 的 Chat 地址、密钥和模型；保留上面的 `EMBEDDING_*` 配置。不要把 DeepSeek 当作 Embedding Provider。
+
+旧项目配置仍兼容：`CHAT_*` 会回退到 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`；`EMBEDDING_*` 的密钥和地址会回退到相同的 `OPENAI_*`，模型与维度继续使用 `EMBEDDING_MODEL`、`EMBEDDING_DIMENSIONS`。新配置优先。
+
+切换 Embedding 模型或维度可能与已存在的向量 collection 不兼容；生产数据应新建 collection 或按计划重建数据，不能直接混用维度。密钥只应保存在本地 `.env` 或受管密钥服务，绝不写入源码、日志或 `.env.example`。
+
+无网络单元测试：`cd python && python -m pytest tests -q`。真实 smoke test 则在启动服务后调用 `/api/health`、`/api/admin/stats` 和一次简短的 `/api/qa/ask`。
+
 用任意编辑器打开 `.env`，填入你的配置：
 
 ```env

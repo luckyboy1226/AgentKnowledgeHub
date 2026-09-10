@@ -28,20 +28,17 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from agents.doc_parser_agent import DocParserAgent
-from agents.knowledge_extract_agent import KnowledgeExtractAgent
 from agents.knowledge_update_agent import ChangeType, DocumentChange, KnowledgeUpdateAgent
 from config import settings
 from orchestrator.graph import build_knowledge_graph_workflow
 from services.knowledge_graph import KnowledgeGraphService
 from services.memory_service import MemoryService
 from services.vector_store import VectorStoreService
+from providers.factory import create_chat_provider, create_embedding_provider
 
-vector_store = VectorStoreService()
 knowledge_graph = KnowledgeGraphService()
-memory_service = MemoryService()
-doc_parser = DocParserAgent()
-extractor = KnowledgeExtractAgent()
+vector_store: VectorStoreService | None = None
+memory_service: MemoryService | None = None
 workflows: dict[str, Any] = {}
 mongo_client = None
 
@@ -49,8 +46,12 @@ mongo_client = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """初始化知识图谱和工作流"""
-    global mongo_client
+    global mongo_client, vector_store, memory_service
     os.makedirs(settings.upload_dir, exist_ok=True)   # 确保上传目录存在
+    chat_provider = create_chat_provider(settings)
+    embedding_provider = create_embedding_provider(settings)
+    vector_store = VectorStoreService(embedding_provider)
+    memory_service = MemoryService(embedding_provider)
     await vector_store.init()    # 初始化向量存储；失败时阻止服务伪健康启动
     await knowledge_graph.init()    # 初始化知识图谱；失败时阻止服务伪健康启动
 
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
 
     workflows.update(                   # 初始化知识图谱工作流
         build_knowledge_graph_workflow(
+            chat_provider=chat_provider,
             vector_store=vector_store,
             knowledge_graph=knowledge_graph,
             memory_service=memory_service,
