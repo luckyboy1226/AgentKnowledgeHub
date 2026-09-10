@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
 
     # Memory System (v6.0)
     memory_db_path: str = "./memory.db"

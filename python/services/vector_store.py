@@ -20,9 +20,10 @@ from config import settings
 class DashScopeEmbeddings:
     """兼容阿里云 DashScope 的嵌入模型"""
     
-    def __init__(self, api_key: str, model: str = "text-embedding-v1"):
+    def __init__(self, api_key: str, model: str = "text-embedding-v1", dimensions: int = 1536):
         self.api_key = api_key
         self.model = model
+        self.dimensions = dimensions
         self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -39,7 +40,8 @@ class DashScopeEmbeddings:
                     },
                     json={
                         "model": self.model,
-                        "input": text[:8191]  # DashScope 限制
+                        "input": text[:8191],  # DashScope 限制
+                        "dimensions": self.dimensions,
                     },
                     timeout=30
                 )
@@ -64,6 +66,7 @@ class VectorStoreService:
             self.embeddings = DashScopeEmbeddings(
                 api_key=settings.openai_api_key,
                 model=settings.embedding_model,
+                dimensions=settings.embedding_dimensions,
             )
         else:
             self.embeddings = OpenAIEmbeddings(

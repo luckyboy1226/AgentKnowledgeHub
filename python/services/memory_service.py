@@ -133,6 +133,7 @@ class MemoryService:
                 embedder = DashScopeEmbeddings(
                     api_key=settings.openai_api_key,
                     model=settings.embedding_model,
+                    dimensions=settings.embedding_dimensions,
                 )
             else:
                 embedder = OpenAIEmbeddings(
@@ -164,7 +165,7 @@ class MemoryService:
     async def retrieve_long_term(self, query: str, top_k: int = 5) -> List[MemoryEvent]:
         """检索长期记忆（根据用户的问题，找到相关的历史记忆）"""
         if not query.strip():
-            query_embedding = [0.0] * 1536
+            query_embedding = [0.0] * settings.embedding_dimensions
         else:
             from langchain_openai import OpenAIEmbeddings
             
@@ -173,6 +174,7 @@ class MemoryService:
                 embedder = DashScopeEmbeddings(
                     api_key=settings.openai_api_key,
                     model=settings.embedding_model,
+                    dimensions=settings.embedding_dimensions,
                 )
             else:
                 embedder = OpenAIEmbeddings(
@@ -201,9 +203,13 @@ class MemoryService:
         scored_memories = []
         for row in rows:
             try:
-                embedding = pickle.loads(row[7]) if row[7] else [0.0] * 1536
+                embedding = (
+                    pickle.loads(row[7])
+                    if row[7]
+                    else [0.0] * settings.embedding_dimensions
+                )
             except:
-                embedding = [0.0] * 1536
+                embedding = [0.0] * settings.embedding_dimensions
             
             similarity = np.dot(query_embedding, embedding) / (
                 np.linalg.norm(query_embedding) * np.linalg.norm(embedding) + 1e-8

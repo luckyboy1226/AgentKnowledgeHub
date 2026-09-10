@@ -255,7 +255,7 @@ def _build_ingest_graph(
 """问答流程"""
 def _build_qa_graph(qa_agent: QAAgent, checkpointer=None) -> StateGraph:
 
-    @IdempotentNode("answer", max_retries=2, timeout_seconds=60)
+    @IdempotentNode("answer", max_retries=2, timeout_seconds=180)
     async def process_question(state: dict) -> dict:
         question = state.get("question", "")
         session_id = state.get("session_id")
