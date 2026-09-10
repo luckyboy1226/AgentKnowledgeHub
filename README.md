@@ -615,10 +615,27 @@ AgentKnowledgeHub/
 
 | 方法 | 路径 | 说明 | 示例 |
 |------|------|------|------|
-| `POST` | `/api/ingest/upload` | 上传单个文档 | `curl -F "file=@doc.pdf" http://localhost:8080/api/ingest/upload` |
+| `POST` | `/api/documents` | 创建版本化文档 | `curl -F "file=@doc.pdf" http://localhost:8080/api/documents` |
+| `PUT` | `/api/documents/{document_id}` | 上传该 document 的新版本 | `curl -X PUT -F "file=@new.pdf" http://localhost:8080/api/documents/{document_id}` |
+| `DELETE` | `/api/documents/{document_id}` | 启动精确的删除 Saga | - |
+| `GET` | `/api/documents/{document_id}` | 查询文档登记状态 | - |
+| `GET` | `/api/documents/{document_id}/versions` | 查询不可变版本列表 | - |
+| `GET` | `/api/documents/{document_id}/status` | 查询当前状态 | - |
+| `GET` | `/api/document-operations/{operation_id}` | 查询安全的 Saga 操作摘要 | - |
+| `POST` | `/api/ingest/upload` | 上述创建接口的兼容别名 | `curl -F "file=@doc.pdf" http://localhost:8080/api/ingest/upload` |
 | `POST` | `/api/ingest/batch` | 批量上传文档 | 上传多个文件，自动并行处理 |
-| `GET` | `/api/ingest/documents` | 获取已上传文档列表 | - |
-| `DELETE` | `/api/ingest/documents/{file_name}` | 删除指定文档 | - |
+| `GET` | `/api/ingest/documents` | 兼容列表（保留旧字段并增加 document/version/status） | - |
+| `DELETE` | `/api/ingest/documents/{file_name}` | 仅清理历史上传文件；新前端按 document_id 调用新删除接口 | - |
+
+版本化 POST/PUT 在当前实现中同步等待 Saga 完成并返回 `200`。响应包含
+`operation_id`、`document_id`、`version`、`content_hash`、`changed` 和 `status_url`；同一
+逻辑文档上传相同内容会返回 `changed=false`。删除若已完成逻辑删除但物理清理失败，会显示
+`cleanup_pending`，可通过 operation 查询继续观察。恢复/全局对账服务方法存在于后端，但因
+当前没有可靠管理员鉴权，**没有公开 HTTP recover/reconcile 接口**。
+
+上传仅接受受支持文件扩展名，最大 25 MiB；文件名会被规范化，不能传递本机路径。文档解析
+与抽取可能需要较长时间，生产环境应在受控认证、限流与后台任务架构下部署；下一阶段才进行
+真实 V1/V2 更新与删除验收。
 
 ### 智能问答接口
 

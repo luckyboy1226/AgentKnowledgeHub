@@ -19,35 +19,64 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import shutil
 import uuid
-import hashlib
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from agents.knowledge_update_agent import ChangeType, DocumentChange, KnowledgeUpdateAgent
 from config import settings
 from orchestrator.graph import build_knowledge_graph_workflow
 from services.knowledge_graph import KnowledgeGraphService
 from services.memory_service import MemoryService
 from services.vector_store import VectorStoreService
+from services.document_registry import DocumentRegistry, RegistryError, safe_error
+from services.document_processor import (
+    DocumentParseError,
+    DocumentProcessorAdapter,
+    EmptyDocumentError,
+    InvalidExtractionResult,
+    KnowledgeExtractionError,
+    ProcessingTimeoutError,
+    UnsupportedDocumentType,
+    safe_filename,
+)
+from services.document_update_coordinator import DocumentUpdateCoordinator, OperationBusyError
 from providers.factory import create_chat_provider, create_embedding_provider
+from agents.doc_parser_agent import DocParserAgent
+from agents.knowledge_extract_agent import KnowledgeExtractAgent
 
 knowledge_graph = KnowledgeGraphService()
 vector_store: VectorStoreService | None = None
 memory_service: MemoryService | None = None
 workflows: dict[str, Any] = {}
 mongo_client = None
+document_registry: DocumentRegistry | None = None
+document_coordinator: DocumentUpdateCoordinator | None = None
+MAX_DOCUMENT_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def build_document_coordinator(
+    registry: DocumentRegistry,
+    vectors: VectorStoreService,
+    graph: KnowledgeGraphService,
+    chat_provider: Any,
+    *,
+    temp_root: str | Path,
+) -> DocumentUpdateCoordinator:
+    """Compose document dependencies from existing lifecycle-owned clients only."""
+    processor = DocumentProcessorAdapter(
+        DocParserAgent(chat_provider), KnowledgeExtractAgent(chat_provider), temp_root=temp_root
+    )
+    return DocumentUpdateCoordinator(registry, vectors, graph, processor)
 
 # 初始化知识图谱和工作流
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """初始化知识图谱和工作流"""
-    global mongo_client, vector_store, memory_service
+    global mongo_client, vector_store, memory_service, document_registry, document_coordinator
     os.makedirs(settings.upload_dir, exist_ok=True)   # 确保上传目录存在
     chat_provider = create_chat_provider(settings)
     embedding_provider = create_embedding_provider(settings)
@@ -60,6 +89,17 @@ async def lifespan(app: FastAPI):
     from pymongo import MongoClient
     from langgraph.checkpoint.mongodb import MongoDBSaver
     mongo_client = MongoClient(settings.mongodb_uri)
+    document_registry = DocumentRegistry(mongo_client[settings.mongodb_database])
+    document_registry.ensure_indexes()
+    document_coordinator = build_document_coordinator(
+        document_registry,
+        vector_store,
+        knowledge_graph,
+        chat_provider,
+        temp_root=Path(settings.upload_dir) / ".processing",
+    )
+    app.state.document_registry = document_registry
+    app.state.document_coordinator = document_coordinator
     checkpointer = MongoDBSaver(
         client=mongo_client,
         db_name=settings.mongodb_database,
@@ -78,6 +118,8 @@ async def lifespan(app: FastAPI):
     await knowledge_graph.close()
     if mongo_client:
         mongo_client.close()
+    document_coordinator = None
+    app.state.document_coordinator = None
 
 
 app = FastAPI(         # 初始化FastAPI应用
@@ -122,6 +164,15 @@ class IngestResponse(BaseModel):  # 文档入库响应模型
     entities_count: int
     relations_count: int
     status: str
+    document_id: str | None = None
+    namespace: str = "default"
+    logical_key: str | None = None
+    version: int | None = None
+    content_hash: str | None = None
+    changed: bool = True
+    operation_id: str | None = None
+    status_url: str | None = None
+    completed_steps: list[str] = []
 
 
 class StatsResponse(BaseModel):  # 统计响应模型
@@ -131,9 +182,12 @@ class StatsResponse(BaseModel):  # 统计响应模型
 
 
 class UpdateRequest(BaseModel):  # 更新请求模型
-    """更新请求模型"""
-    file_path: str
-    change_type: str = "modified"
+    """Reserved for the future versioned document update API.
+
+    Local paths are intentionally not accepted: a future update must upload
+    its bytes with ``PUT /api/documents/{document_id}``.
+    """
+    document_id: str
 
 
 class UpdateResponse(BaseModel):  # 更新响应模型
@@ -147,60 +201,174 @@ class UpdateResponse(BaseModel):  # 更新响应模型
     processing_time_ms: float
 
 
-# ── Ingest Endpoints ─────────────────────────────────────────
-# 文档入库接口
-@app.post("/api/ingest/upload", response_model=IngestResponse, tags=["文档入库"])
-async def upload_document(file: UploadFile = File(...)):
-    """上传并解析文档，自动入库到向量库和知识图谱（通过 ingest workflow + checkpoint）"""
-    import logging
-    logger = logging.getLogger(__name__)
+# ── Versioned document endpoints ─────────────────────────────
 
-    file_name = Path(file.filename or "unknown").name
-    if not file_name or file_name in {".", ".."}:
-        raise HTTPException(status_code=400, detail="Invalid file name")
-    upload_root = Path(settings.upload_dir).resolve()
-    save_path = (upload_root / file_name).resolve()
-    if upload_root not in save_path.parents:
-        raise HTTPException(status_code=400, detail="Invalid file name")
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)    # 复制文件内容到保存路径
+def _registry() -> DocumentRegistry:
+    registry = getattr(app.state, "document_registry", None) or document_registry
+    if registry is None:
+        raise HTTPException(status_code=503, detail="Document registry is unavailable")
+    return registry
 
-    if not settings.has_usable_llm_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Document saved, but ingestion requires a configured non-placeholder OPENAI_API_KEY.",
-        )
 
+def _coordinator() -> DocumentUpdateCoordinator:
+    coordinator = getattr(app.state, "document_coordinator", None) or document_coordinator
+    if coordinator is None:
+        raise HTTPException(status_code=503, detail="Document processing is unavailable")
+    return coordinator
+
+
+async def _read_document_upload(file: UploadFile) -> tuple[str, bytes]:
+    file_name = safe_filename(file.filename or "")
+    suffix = Path(file_name).suffix.lower()
+    if not file_name or suffix not in DocParserAgent.SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported document type")
+    content = await file.read(MAX_DOCUMENT_UPLOAD_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="Document is empty")
+    if len(content) > MAX_DOCUMENT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Document exceeds the upload size limit")
+    return file_name, content
+
+
+def _safe_operation_response(result: dict[str, Any], file_name: str, *, namespace: str = "default", logical_key: str | None = None) -> IngestResponse:
+    operation_id = result.get("operation_id")
+    metadata = result.get("processing_metadata", {})
+    return IngestResponse(
+        file_name=file_name,
+        chunks_count=int(metadata.get("chunk_count", 0)),
+        entities_count=int(metadata.get("entity_count", 0)),
+        relations_count=int(metadata.get("relation_count", 0)),
+        status=str(result.get("status", "processing")),
+        document_id=result.get("document_id"),
+        namespace=namespace,
+        logical_key=logical_key,
+        version=result.get("version"),
+        content_hash=result.get("content_hash"),
+        changed=bool(result.get("changed", True)),
+        operation_id=operation_id,
+        status_url=f"/api/document-operations/{operation_id}" if operation_id else None,
+        completed_steps=list(result.get("completed_steps", [])),
+    )
+
+
+def _raise_document_error(error: Exception) -> None:
+    if isinstance(error, HTTPException):
+        raise error
+    if isinstance(error, (UnsupportedDocumentType, EmptyDocumentError)):
+        raise HTTPException(status_code=400, detail="Invalid document input") from None
+    if isinstance(error, (InvalidExtractionResult, DocumentParseError, KnowledgeExtractionError)):
+        raise HTTPException(status_code=422, detail="Document processing produced an invalid result") from None
+    if isinstance(error, ProcessingTimeoutError):
+        raise HTTPException(status_code=504, detail="Document processing timed out") from None
+    if isinstance(error, OperationBusyError):
+        raise HTTPException(status_code=409, detail="A document operation is already active") from None
+    if isinstance(error, RegistryError):
+        message = str(error).lower()
+        if "not found" in message:
+            raise HTTPException(status_code=404, detail="Document not found") from None
+        if "invalid" in message or "processing" in message or "deleted" in message:
+            raise HTTPException(status_code=409, detail="Document state conflicts with this operation") from None
+        raise HTTPException(status_code=503, detail="Document registry is unavailable") from None
+    raise HTTPException(status_code=503, detail="A required document-processing dependency is unavailable") from None
+
+
+async def _create_document(file: UploadFile, logical_key: str | None, namespace: str) -> IngestResponse:
+    file_name, content = await _read_document_upload(file)
+    operation_id = str(uuid.uuid4())
     try:
-        ingest_wf = workflows.get("ingest")
-        if not ingest_wf:
-            raise HTTPException(status_code=503, detail="Ingest workflow not initialized")
-
-        thread_id = f"ingest-{file_name}"
-        request_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": thread_id}}
-
-        logger.info(f"开始入库文档: {save_path}, thread_id={thread_id}")
-        result = await ingest_wf.ainvoke(
-            {"file_paths": [save_path], "request_id": request_id},
-            config=config,
+        result = await _coordinator().create_document_version(
+            filename=file_name, content=content, logical_key=logical_key, namespace=namespace, operation_id=operation_id
         )
+    except Exception as exc:
+        _raise_document_error(exc)
+    return _safe_operation_response(result, file_name, namespace=namespace, logical_key=logical_key)
 
-        chunks = result.get("chunks", [])
-        extractions = result.get("extractions", [])
-        total_entities = sum(len(e.entities) for e in extractions) if extractions else 0
-        total_relations = sum(len(e.relations) for e in extractions) if extractions else 0
 
-        return IngestResponse(
-            file_name=file_name,
-            chunks_count=len(chunks),
-            entities_count=total_entities,
-            relations_count=total_relations,
-            status="success",
+@app.post("/api/documents", response_model=IngestResponse, tags=["文档入库"])
+@app.post("/api/ingest/upload", response_model=IngestResponse, tags=["文档入库"])
+async def upload_document(
+    file: UploadFile = File(...), logical_key: str | None = Form(None), namespace: str = Form("default")
+):
+    """Create a versioned document; the legacy URL remains a compatibility alias."""
+    return await _create_document(file, logical_key, namespace)
+
+@app.get("/api/documents/{document_id}")
+async def get_registered_document(document_id: str):
+    row = _registry().find(document_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return row
+
+@app.get("/api/documents/{document_id}/versions")
+async def get_document_versions(document_id: str):
+    if not _registry().find(document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return _registry().versions_for(document_id)
+
+@app.get("/api/documents/{document_id}/status")
+async def get_document_status(document_id: str):
+    return await get_registered_document(document_id)
+
+
+@app.put("/api/documents/{document_id}", response_model=IngestResponse, tags=["文档入库"])
+async def update_registered_document(
+    document_id: str, file: UploadFile = File(...)
+):
+    """Create the next immutable version for the path document ID only."""
+    file_name, content = await _read_document_upload(file)
+    document = _registry().find(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.get("status") in {"processing", "deleting"}:
+        raise HTTPException(status_code=409, detail="Document is currently being processed")
+    operation_id = str(uuid.uuid4())
+    try:
+        result = await _coordinator().update_document(
+            document_id, filename=file_name, content=content, operation_id=operation_id
         )
-    except Exception as e:
-        logger.error(f"上传失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+    except Exception as exc:
+        _raise_document_error(exc)
+    return _safe_operation_response(
+        result, file_name, namespace=document.get("namespace", "default"), logical_key=document.get("logical_key")
+    )
+
+
+@app.delete("/api/documents/{document_id}", tags=["文档入库"])
+async def delete_registered_document(document_id: str):
+    """Run the document-scoped delete Saga; never accepts a path or source."""
+    document = _registry().find(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.get("status") in {"processing", "deleting"}:
+        raise HTTPException(status_code=409, detail="Document is currently being processed")
+    if document.get("status") == "deleted":
+        return {"document_id": document_id, "operation_id": None, "status": "deleted", "changed": False}
+    operation_id = str(uuid.uuid4())
+    try:
+        result = await _coordinator().delete_document(document_id, operation_id=operation_id)
+    except Exception as exc:
+        _raise_document_error(exc)
+    return {
+        "document_id": document_id,
+        "operation_id": result.get("operation_id", operation_id),
+        "status": result.get("status", "processing"),
+        "changed": True,
+        "status_url": f"/api/document-operations/{result.get('operation_id', operation_id)}",
+    }
+
+
+@app.get("/api/document-operations/{operation_id}", tags=["文档入库"])
+async def get_document_operation(operation_id: str):
+    operation = _coordinator().journal.get(operation_id)
+    if not operation:
+        raise HTTPException(status_code=404, detail="Document operation not found")
+    return {
+        key: operation.get(key)
+        for key in (
+            "operation_id", "operation_type", "document_id", "version", "status",
+            "completed_steps", "compensation_steps", "created_at", "updated_at",
+        )
+    } | {"error_summary": safe_error(operation.get("error_summary") or "") or None}
 
 
 @app.post("/api/ingest/batch", response_model=list[IngestResponse], tags=["文档入库"])
@@ -208,14 +376,41 @@ async def upload_batch(files: list[UploadFile] = File(...)):
     """批量上传文档"""
     results = []
     for file in files:
-        resp = await upload_document(file)
+        resp = await _create_document(file, logical_key=None, namespace="default")
         results.append(resp)
     return results
 
 
 @app.get("/api/ingest/documents", tags=["文档入库"])
 async def get_documents():
-    """获取已上传文档列表"""
+    """Legacy list URL with its established fields plus registry identity/state."""
+    if document_registry or getattr(app.state, "document_registry", None):
+        rows = []
+        for document in _registry().list_documents():
+            versions = _registry().versions_for(document["document_id"])
+            current = next((item for item in versions if item.get("is_current")), {})
+            updated_at = document.get("updated_at")
+            rows.append({
+                "id": document["document_id"], "name": document.get("filename", "unnamed"),
+                "size": 0, "upload_time": updated_at.timestamp() if hasattr(updated_at, "timestamp") else 0,
+                "chunks_count": current.get("chunk_count", 0), "document_id": document["document_id"],
+                "version": document.get("current_version"), "status": document.get("status"),
+                "changed": True, "legacy": False,
+            })
+        known_names = {row["name"] for row in rows}
+        if os.path.exists(settings.upload_dir):
+            for filename in os.listdir(settings.upload_dir):
+                filepath = os.path.join(settings.upload_dir, filename)
+                if os.path.isfile(filepath) and filename not in known_names:
+                    stat = os.stat(filepath)
+                    rows.append({
+                        "id": filename, "name": filename, "size": stat.st_size,
+                        "upload_time": stat.st_ctime, "chunks_count": 0,
+                        "document_id": None, "version": None, "status": "legacy",
+                        "changed": False, "legacy": True,
+                    })
+        return rows
+    """Fallback only for an API instance without the registry dependency."""
     documents = []
     if os.path.exists(settings.upload_dir):
         for filename in os.listdir(settings.upload_dir):
@@ -223,9 +418,6 @@ async def get_documents():
             if os.path.isfile(filepath):
                 stat = os.stat(filepath)
                 chunks_count = 0
-                if vector_store and getattr(vector_store, "_backend", None) == "chroma":
-                    doc_id = hashlib.sha256(str(Path(filepath).resolve()).encode()).hexdigest()[:16]
-                    chunks_count = len(vector_store._store.get(where={"doc_id": doc_id}, include=[]).get("ids", []))
                 documents.append({
                     "id": filename,
                     "name": filename,
@@ -238,14 +430,18 @@ async def get_documents():
 
 @app.delete("/api/ingest/documents/{file_name}", tags=["文档入库"])
 async def delete_document(file_name: str):
-    """删除已上传的文档"""
-    filepath = os.path.join(settings.upload_dir, file_name)
-    if not os.path.exists(filepath):
+    """Legacy file cleanup endpoint; versioned UI calls /api/documents/{id}."""
+    safe_name = Path(file_name).name
+    upload_root = Path(settings.upload_dir).resolve()
+    filepath = (upload_root / safe_name).resolve()
+    if safe_name != file_name or upload_root not in filepath.parents:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    if not filepath.exists():
         raise HTTPException(status_code=404, detail="Document not found")
     
     try:
-        os.remove(filepath)
-        return {"success": True, "message": f"Document {file_name} deleted"}
+        filepath.unlink()
+        return {"success": True, "message": f"Document {safe_name} deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
@@ -288,7 +484,14 @@ async def ask_question(req: QuestionRequest):
         confidence=qa_result.confidence,  # 问答结果中的置信度
         intent=qa_result.intent.value,    # 问答结果中的意图
         sources=[
-            {"content": c.content[:200], "source": Path(c.source).name, "score": c.score, "type": c.retrieval_type}
+            {
+                "content": c.content[:200],
+                "source": Path(c.source).name,
+                "score": c.score,
+                "type": c.retrieval_type,
+                "document_id": c.metadata.get("document_id"),
+                "document_version": c.metadata.get("document_version"),
+            }
             for c in qa_result.contexts
         ],
         reasoning_steps=qa_result.reasoning_steps,
@@ -307,36 +510,11 @@ async def get_stats():
 
 @app.post("/api/admin/update", response_model=UpdateResponse, tags=["系统管理"])
 async def trigger_update(req: UpdateRequest):
-    """手动触发知识更新"""
-    update_wf = workflows.get("update")     ### 从工作流字典，获取知识更新工作流
-    if not update_wf:
-        raise HTTPException(status_code=503, detail="Update workflow not initialized")
-
-    thread_id = f"update-{req.file_path}"
-    request_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
-
-    change = DocumentChange(
-        file_path=req.file_path,
-        change_type=ChangeType(req.change_type),
-    )
-    result = await update_wf.ainvoke(
-        {"changes": [change], "request_id": request_id},
-        config=config,
-    )
-    results = result.get("results", [])
-    if not results:
-        raise HTTPException(status_code=500, detail="Update failed")
-
-    r = results[0]
-    return UpdateResponse(
-        file_path=r.change.file_path,
-        vectors_added=r.vectors_added,
-        vectors_deleted=r.vectors_deleted,
-        entities_added=r.entities_added,
-        relations_added=r.relations_added,
-        success=r.success,
-        processing_time_ms=r.processing_time_ms,
+    """Disable the legacy local-path update endpoint until S3 is transactional."""
+    del req
+    raise HTTPException(
+        status_code=501,
+        detail="Use the future multipart document update API; local file paths are not accepted.",
     )
 
 
@@ -660,7 +838,7 @@ async def health():
 @app.get("/api/health/ready", tags=["系统管理"])
 async def readiness():
     """Dependency readiness without invoking billable model endpoints."""
-    if not vector_store or not memory_service:
+    if not vector_store or not memory_service or not document_registry or not document_coordinator:
         raise HTTPException(status_code=503, detail="Application dependencies are not initialized")
     try:
         await vector_store.get_stats()

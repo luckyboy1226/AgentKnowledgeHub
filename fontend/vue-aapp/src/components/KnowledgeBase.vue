@@ -226,7 +226,7 @@ const handleDelete = (row) => {
   ).then(async () => {
     loading.value = true
     try {
-      await deleteDocument(row.id)
+      await deleteDocument(row.id, row.legacy)
       const index = documents.value.findIndex(doc => doc.id === row.id)
       if (index > -1) {
         documents.value.splice(index, 1)

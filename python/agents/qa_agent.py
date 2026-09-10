@@ -286,38 +286,34 @@ class QAAgent:
     # ── graph retrieval ──────────────────────────────────────
 
     async def _graph_retrieve(self, question: str, rewritten: dict) -> list[RetrievedContext]:
+        """Retrieve graph facts through the provenance-aware service API.
+
+        The previous model-generated Cypher path could not enforce the S3
+        current/legacy filter. Entity names remain model-derived upstream, but
+        all graph traversal now uses parameterized service queries.
+        """
         if not self.knowledge_graph:
             return []
 
-        import json
+        del question
         entities = rewritten.get("entities", [])
-        messages = [
-            SystemMessage(content=CYPHER_GENERATION_PROMPT),
-            HumanMessage(content=f"问题: {question}\n实体: {entities}"),
-        ]
-        resp = await self.llm.ainvoke(messages)
-        try:
-            cleaned = resp.content.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0]
-            cypher_data = json.loads(cleaned)
-        except (json.JSONDecodeError, IndexError):
-            cypher_data = {"queries": []}
-
         contexts: list[RetrievedContext] = []
-        for cypher in cypher_data.get("queries", []):
-            cypher = self._normalize_read_only_cypher(cypher)
-            if not cypher:
-                continue
+        for entity_name in entities[:10]:
             try:
-                records = await self.knowledge_graph.execute_cypher(cypher)
+                records = await self.knowledge_graph.get_neighbors(entity_name, hops=2)
                 for record in records:
+                    source = self.knowledge_graph.safe_source(record.get("provenance_source", ""))
                     contexts.append(RetrievedContext(
                         content=str(record),
-                        source="knowledge_graph",
+                        source=source or "knowledge_graph",
                         score=0.8,
                         retrieval_type="graph",
-                        metadata={"cypher": cypher},
+                        metadata={
+                            "entity": entity_name,
+                            "document_id": record.get("document_id"),
+                            "document_version": record.get("document_version"),
+                            "source": source,
+                        },
                     ))
             except Exception:
                 continue

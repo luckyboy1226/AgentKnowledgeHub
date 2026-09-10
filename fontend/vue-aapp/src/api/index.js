@@ -96,8 +96,10 @@ export const getDocumentList = () => {
   return api.get('/ingest/documents')
 }
 
-export const deleteDocument = (documentId) => {
-  return api.delete(`/ingest/documents/${documentId}`)
+export const deleteDocument = (documentId, legacy = false) => {
+  return legacy
+    ? api.delete(`/ingest/documents/${encodeURIComponent(documentId)}`)
+    : api.delete(`/documents/${encodeURIComponent(documentId)}`)
 }
 
 // 会话管理API

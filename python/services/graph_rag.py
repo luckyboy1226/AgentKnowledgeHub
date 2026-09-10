@@ -124,6 +124,7 @@ class GraphRAGPipeline:
 
     async def _subgraph_search(self, entities: list[str], hops: int = 2) -> list[GraphRAGContext]:
         contexts: list[GraphRAGContext] = []
+        seen: dict[str, GraphRAGContext] = {}
         for entity_name in entities:
             neighbors = await self.knowledge_graph.get_neighbors(entity_name, hops=hops)
             for record in neighbors:
@@ -134,12 +135,23 @@ class GraphRAGPipeline:
                     f"({record.get('target_type', '')}): "
                     f"{record.get('target_desc', '')}"
                 )
-                contexts.append(GraphRAGContext(
+                provenance = {
+                    "document_id": record.get("document_id"),
+                    "document_version": record.get("document_version"),
+                    "source": self.knowledge_graph.safe_source(record.get("provenance_source", "")),
+                }
+                existing = seen.get(content)
+                if existing:
+                    existing.metadata.setdefault("sources", []).append(provenance)
+                    continue
+                context = GraphRAGContext(
                     content=content,
                     source_type="subgraph",
                     score=0.75,
-                    metadata={"entity": entity_name, "hops": hops},
-                ))
+                    metadata={"entity": entity_name, "hops": hops, **provenance, "sources": [provenance]},
+                )
+                seen[content] = context
+                contexts.append(context)
         return contexts
 
     # ── Step 4: 路径检索 ─────────────────────────────────────
@@ -152,19 +164,8 @@ class GraphRAGPipeline:
         contexts: list[GraphRAGContext] = []
         for i in range(len(entities)):
             for j in range(i + 1, min(i + 3, len(entities))):
-                cypher = """
-                MATCH path = shortestPath(
-                    (a:Entity {name: $name_a})-[*..5]-(b:Entity {name: $name_b})
-                )
-                RETURN
-                    [n IN nodes(path) | n.name] AS node_names,
-                    [r IN relationships(path) | type(r)] AS rel_types
-                LIMIT 3
-                """
                 try:
-                    records = await self.knowledge_graph.execute_cypher(
-                        cypher, {"name_a": entities[i], "name_b": entities[j]}
-                    )
+                    records = await self.knowledge_graph.get_current_paths(entities[i], entities[j], limit=3)
                     for rec in records:
                         nodes = rec.get("node_names", [])
                         rels = rec.get("rel_types", [])
@@ -177,7 +178,13 @@ class GraphRAGPipeline:
                             content=f"推理路径: {path_str}",
                             source_type="path",
                             score=0.85,
-                            metadata={"from": entities[i], "to": entities[j]},
+                            metadata={
+                                "from": entities[i],
+                                "to": entities[j],
+                                "document_id": rec.get("document_id"),
+                                "document_version": rec.get("document_version"),
+                                "source": self.knowledge_graph.safe_source(rec.get("provenance_source", "")),
+                            },
                         ))
                 except Exception:
                     continue
