@@ -697,6 +697,25 @@ npm run serve
 
 访问 [http://localhost:8081](http://localhost:8081) 即可使用前端界面。
 
+## 本地 core 运行与验证
+
+推荐使用 Conda 环境 `kghub`。先安装后端依赖与 `fontend/vue-aapp` 的前端依赖，然后在项目根目录运行：
+
+```powershell
+.\scripts\start-dev.ps1 -Mode core
+.\scripts\doctor.ps1 -Mode core
+.\scripts\smoke-test.ps1 -Mode core
+.\scripts\stop-dev.ps1 -Mode core
+```
+
+`core` 启动 MongoDB、Neo4j、Chroma、API 和前端；`full` 额外启动 Kafka 基础设施。Kafka/CDC 当前仅为 optional/experimental，独立 CDC worker 尚未实现。
+
+地址为 API `http://127.0.0.1:8080`、Swagger `http://127.0.0.1:8080/docs`、前端 `http://127.0.0.1:8081`。脚本在 `.runtime/` 保存经端口、启动时间和命令行标记核验的 PID 元数据，在 `logs/` 保存本地日志；两者均被忽略，不应提交。端口冲突时脚本不会替换无法核验归属的进程。
+
+Docker volumes 不会被启动或停止脚本删除；不要使用 `docker compose down -v`，除非明确要清空本地数据。若 Chroma 配置使用 IPv6 loopback，请确保本地进程的 `NO_PROXY` 包含 `localhost,127.0.0.1,::1`，避免本机代理误转发回环请求。
+
+已在本地 core 环境真实验证：文档入库、Chroma 向量写入与检索、Neo4j 实体关系、vector QA、sources、GraphRAG，以及 Mongo checkpoint 写入、续写和 API 重启后的同一会话请求。QA 通常需要约 60–90 秒，不适合直接暴露到公网。`aget_tuple` 的 request-scoped 读取观测日志尚未完成验证；这是可观测性技术债，不应被表述为已证明的 checkpoint 读取证据。
+
 ---
 
 ## ❓ 常见问题 FAQ

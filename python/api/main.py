@@ -21,6 +21,7 @@ load_dotenv()
 import os
 import shutil
 import uuid
+import hashlib
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -154,7 +155,13 @@ async def upload_document(file: UploadFile = File(...)):
     import logging
     logger = logging.getLogger(__name__)
 
-    save_path = os.path.join(settings.upload_dir, file.filename or "unknown")    # 上传文件保存路径
+    file_name = Path(file.filename or "unknown").name
+    if not file_name or file_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    upload_root = Path(settings.upload_dir).resolve()
+    save_path = (upload_root / file_name).resolve()
+    if upload_root not in save_path.parents:
+        raise HTTPException(status_code=400, detail="Invalid file name")
     with open(save_path, "wb") as f:
         shutil.copyfileobj(file.file, f)    # 复制文件内容到保存路径
 
@@ -169,7 +176,7 @@ async def upload_document(file: UploadFile = File(...)):
         if not ingest_wf:
             raise HTTPException(status_code=503, detail="Ingest workflow not initialized")
 
-        thread_id = f"ingest-{file.filename}"
+        thread_id = f"ingest-{file_name}"
         request_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
 
@@ -185,7 +192,7 @@ async def upload_document(file: UploadFile = File(...)):
         total_relations = sum(len(e.relations) for e in extractions) if extractions else 0
 
         return IngestResponse(
-            file_name=file.filename or "unknown",
+            file_name=file_name,
             chunks_count=len(chunks),
             entities_count=total_entities,
             relations_count=total_relations,
@@ -215,12 +222,16 @@ async def get_documents():
             filepath = os.path.join(settings.upload_dir, filename)
             if os.path.isfile(filepath):
                 stat = os.stat(filepath)
+                chunks_count = 0
+                if vector_store and getattr(vector_store, "_backend", None) == "chroma":
+                    doc_id = hashlib.sha256(str(Path(filepath).resolve()).encode()).hexdigest()[:16]
+                    chunks_count = len(vector_store._store.get(where={"doc_id": doc_id}, include=[]).get("ids", []))
                 documents.append({
                     "id": filename,
                     "name": filename,
                     "size": stat.st_size,
                     "upload_time": stat.st_ctime,
-                    "chunks_count": 0
+                    "chunks_count": chunks_count
                 })
     return documents
 
@@ -266,7 +277,7 @@ async def ask_question(req: QuestionRequest):
     if req.user_id:
         inputs["user_id"] = req.user_id    # 如果提供了用户 ID，添加到输入参数
 
-    result = await qa_wf.ainvoke(inputs, config=config)    # 调用智能问答工作流，带 thread_id 支持 checkpoint 恢复
+    result = await qa_wf.ainvoke(inputs, config=config)
     qa_result = result.get("result")     # 从工作流结果中提取问答结果
     if not qa_result:
         raise HTTPException(status_code=500, detail="QA failed")
@@ -277,7 +288,7 @@ async def ask_question(req: QuestionRequest):
         confidence=qa_result.confidence,  # 问答结果中的置信度
         intent=qa_result.intent.value,    # 问答结果中的意图
         sources=[
-            {"content": c.content[:200], "source": c.source, "score": c.score, "type": c.retrieval_type}
+            {"content": c.content[:200], "source": Path(c.source).name, "score": c.score, "type": c.retrieval_type}
             for c in qa_result.contexts
         ],
         reasoning_steps=qa_result.reasoning_steps,

@@ -107,7 +107,7 @@ class DocParserAgent:
 
     @staticmethod
     def _make_doc_id(file_path: str) -> str:
-        return hashlib.sha256(file_path.encode()).hexdigest()[:16]
+        return hashlib.sha256(str(file_path).encode()).hexdigest()[:16]
 
     # ── PDF parsing ──────────────────────────────────────────
 

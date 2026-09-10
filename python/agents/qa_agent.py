@@ -72,9 +72,9 @@ CYPHER_GENERATION_PROMPT = """\
 你是一个 Neo4j Cypher 查询生成专家。根据用户问题和提取的实体，生成 Cypher 查询。
 
 知识图谱 Schema:
-- 节点标签: Person, Organization, Technology, Product, Concept, Location
-- 关系类型: belongs_to, works_at, located_in, developed_by, related_to, part_of, uses, depends_on
-- 节点属性: name, type, description, created_at, version
+- 所有节点标签均为 Entity，实体类别保存在 e.type（如 Person、Organization、Technology、Concept）
+- 节点属性: name, type, description, source, created_at, version
+- 关系类型由入库抽取结果决定，不要假设固定类型；优先使用无类型关系模式 MATCH (a:Entity)-[r]-(b:Entity)
 
 生成 1-2 条 Cypher 查询，返回 JSON: {"queries": ["MATCH ...", "MATCH ..."]}
 只返回 JSON，不要其他文字。
@@ -306,6 +306,9 @@ class QAAgent:
 
         contexts: list[RetrievedContext] = []
         for cypher in cypher_data.get("queries", []):
+            cypher = self._normalize_read_only_cypher(cypher)
+            if not cypher:
+                continue
             try:
                 records = await self.knowledge_graph.execute_cypher(cypher)
                 for record in records:
@@ -319,6 +322,29 @@ class QAAgent:
             except Exception:
                 continue
         return contexts
+
+    @staticmethod
+    def _normalize_read_only_cypher(cypher: object) -> str | None:
+        """Return one safe read-only Cypher statement, or reject it."""
+        if not isinstance(cypher, str):
+            return None
+        cleaned = cypher.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else ""
+            if cleaned.rstrip().endswith("```"):
+                cleaned = cleaned.rstrip()[:-3].rstrip()
+        if cleaned.endswith(";"):
+            cleaned = cleaned[:-1].rstrip()
+        normalized = " ".join(cleaned.upper().split())
+        if not normalized or ";" in normalized:
+            return None
+        forbidden = (" CREATE ", " MERGE ", " DELETE ", " SET ", " REMOVE ", " DROP ", " LOAD CSV ", " FOREACH ")
+        padded = f" {normalized} "
+        if not (padded.startswith(" MATCH ") or padded.startswith(" OPTIONAL MATCH ") or padded.startswith(" WITH ")):
+            return None
+        if any(token in padded for token in forbidden):
+            return None
+        return cleaned
 
     # ── hybrid reranking ─────────────────────────────────────
 

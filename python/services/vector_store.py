@@ -60,7 +60,7 @@ class VectorStoreService:
         texts = [c.content for c in chunks]
         ids = [c.chunk_id for c in chunks]
         metadatas = [
-            {"doc_id": c.doc_id, "doc_type": c.doc_type.value, "source": c.metadata.get("source", ""), "chunk_index": c.chunk_index}
+            {"doc_id": c.doc_id, "doc_type": c.doc_type.value, "source": str(c.metadata.get("source", "")), "chunk_index": c.chunk_index}
             for c in chunks
         ]
 

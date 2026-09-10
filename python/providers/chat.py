@@ -23,6 +23,8 @@ class OpenAICompatibleChatProvider:
             api_key=api_key,
             base_url=base_url,
             temperature=0,
+            timeout=60,
+            max_retries=1,
         )
 
     async def ainvoke(self, messages: Sequence[Any], **kwargs: Any) -> Any:
