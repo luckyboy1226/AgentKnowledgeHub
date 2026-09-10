@@ -646,6 +646,21 @@ async def health():
     return {"status": "ok", "service": "AgentKnowledgeHub"}
 
 
+@app.get("/api/health/ready", tags=["系统管理"])
+async def readiness():
+    """Dependency readiness without invoking billable model endpoints."""
+    if not vector_store or not memory_service:
+        raise HTTPException(status_code=503, detail="Application dependencies are not initialized")
+    try:
+        await vector_store.get_stats()
+        await knowledge_graph.get_stats()
+    except Exception:
+        raise HTTPException(status_code=503, detail="A required datastore is unavailable") from None
+    if not settings.has_usable_llm_key:
+        raise HTTPException(status_code=503, detail="Chat provider configuration is incomplete")
+    return {"status": "ready", "providers": {"chat": settings.chat_config.provider, "embedding": settings.embedding_config.provider}}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api.main:app", host=settings.api_host, port=settings.api_port, reload=True)   # 启动API服务

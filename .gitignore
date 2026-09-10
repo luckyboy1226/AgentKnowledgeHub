@@ -72,3 +72,5 @@ secrets.yaml
 .env
 .env.*
 !.env.example
+.runtime/
+logs/
