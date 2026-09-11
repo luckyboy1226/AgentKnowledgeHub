@@ -149,3 +149,26 @@ KnowledgeGraph，并通过 `QAAgent` 的内部受限 retrieval mode 运行 12 �
 3. 实现 fixture、runner、确定性 scorer 和 JSON/CSV/Markdown 报告器。
 4. 用 fake Chat、Embedding、VectorStore、KnowledgeGraph 编写离线单元测试，证明模式隔离、相同预处理、评分和敏感字段脱敏。
 5. 仅在单独授权后，运行上述合成语料的真实入库、双模式评测和精确删除。
+
+## S4.2a：版本化确定性评分
+
+原始真实 run 的 `deterministic_score` 保持为 v1，绝不原地修改。新的
+`deterministic-v2` 将答案语义、来源覆盖、拒答质量和引用行为分离为独立字段：
+`answer_semantic_score`、`source_coverage_score`、`abstention_score`、
+`citation_behavior` 与透明的 `overall_v2`。来源不足不再把语义正确的答案判为错误；
+无答案题允许来源用于描述检索范围，但不允许编造目标事实。
+
+历史 run 只能通过 `python scripts/run-rag-eval.py --rescore <results.json>` 生成相邻的
+`<run_id>-rescored-v2/` 派生目录。派生报告不复制模型回答全文，保留 scorer 版本和 v1/v2 对比，
+因此不会篡改不可变 baseline，也不能将真实关系混淆解释为评分问题。
+
+## S4.2b：有向图谱证据与关系保真
+
+内部 scoped `graph_rag` 查询现在只返回 `evidence_edges`：每条 edge 都包含存储方向的
+`subject --predicate--> object`、路径遍历方向、`document_id`、版本、安全 source 和
+`evidence_key`。缺任何一跳 provenance、包含 legacy/非 allowlist document 或非 ready/current
+edge 的 record 会在进入 prompt 前被拒绝。普通未 scoped 的 API 查询仍使用旧返回形状。
+
+评测 prompt 使用固定三元组模板，严格按已存 predicate 陈述；它不会将 `PROVIDES_INDEX` 改写为
+`DEPENDS_ON`，也不会在缺少直接 edge 时补造关系。评测路径还移除了固定的 graph `1.2` 倍加权，
+让 provenance-complete graph context 与 vector context 按原始分数竞争；未引入题目或答案硬编码。

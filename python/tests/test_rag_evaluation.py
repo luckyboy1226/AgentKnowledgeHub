@@ -14,10 +14,13 @@ import pytest
 from agents.qa_agent import RetrievalMode
 from services.rag_evaluation import (
     DeterministicScorer,
+    DeterministicScorerV2,
     EVALUATION_CASES,
     RAGEvaluationRunner,
     build_offline_runner,
+    rescore_payload_v2,
     safe_source,
+    write_rescore_reports,
 )
 
 
@@ -144,6 +147,106 @@ def test_deterministic_abstention_and_graph_participation_scoring():
     assert missing_graph["question_correct"] is False
 
 
+def test_v2_negation_accepts_explicit_non_responsibility_without_v1_substring_false_negative():
+    answer = "周宁并不负责北极星检索项目；她参与晨星报表的数据分析。"
+    v1 = DeterministicScorer.score(
+        _case("Q10"), answer=answer, sources=[{"source": "s4-eval-org.txt"}],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    v2 = DeterministicScorerV2.score(
+        _case("Q10"), answer=answer, sources=[{"source": "s4-eval-org.txt"}],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    assert v1["question_correct"] is False
+    assert v2["answer_semantic_score"] == 1.0
+    assert v2["question_correct_v2"] is True
+    assert v2["scorer_version"] == "deterministic-v2"
+
+
+def test_v2_negation_accepts_direct_no_and_rejects_positive_claim():
+    accepted = DeterministicScorerV2.score(
+        _case("Q10"), answer="否，周宁不负责北极星检索项目。", sources=[],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    rejected = DeterministicScorerV2.score(
+        _case("Q10"), answer="周宁负责北极星检索项目。", sources=[],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    assert accepted["answer_semantic_score"] == 1.0
+    assert rejected["answer_semantic_score"] == 0.0
+    assert rejected["forbidden_keyword_hits_v2"] == ["positive_claim"]
+
+
+@pytest.mark.parametrize("question_id, answer", [
+    ("Q11", "资料未提及南斗项目负责人，无法回答。"),
+    ("Q12", "现有资料未提供 CEO 信息，无法确定。"),
+])
+def test_v2_abstention_accepts_finite_markers_and_allows_scope_sources(question_id, answer):
+    score = DeterministicScorerV2.score(
+        _case(question_id), answer=answer, sources=[{"source": "s4-eval-org.txt"}],
+        mode=RetrievalMode.GRAPH_RAG, graph_context_count=0,
+    )
+    assert score["abstention_score"] == 1.0
+    assert score["source_coverage_score"] == 1.0
+    assert score["citation_behavior"] == "scope_sources_allowed"
+    assert score["question_correct_v2"] is True
+
+
+@pytest.mark.parametrize("question_id, answer", [
+    ("Q11", "南斗项目负责人是张三。"),
+    ("Q12", "CEO 是王某。"),
+])
+def test_v2_abstention_rejects_invented_target_facts(question_id, answer):
+    score = DeterministicScorerV2.score(
+        _case(question_id), answer=answer, sources=[],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    assert score["abstention_score"] == 0.0
+    assert score["answer_rule"] == "invented_target_fact"
+
+
+def test_v2_source_coverage_is_independent_from_correct_answer_semantics():
+    score = DeterministicScorerV2.score(
+        _case("Q01"), answer="陈航是数据平台部的数据工程师。", sources=[],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    assert score["answer_semantic_score"] == 1.0
+    assert score["source_coverage_score"] == 0.0
+    assert score["question_correct_v2"] is True
+
+
+def test_v1_score_contract_is_unchanged_when_v2_is_available():
+    score = DeterministicScorer.score(
+        _case("Q01"), answer="陈航是数据平台部的数据工程师。", sources=[{"source": "s4-eval-org.txt"}],
+        mode=RetrievalMode.VECTOR_ONLY, graph_context_count=0,
+    )
+    assert set(score) == {
+        "required_keyword_hits", "required_keyword_total", "keyword_fact_score",
+        "forbidden_keyword_hits", "source_hit", "abstention_correct",
+        "graph_participated", "graph_participation_pass", "question_correct",
+    }
+
+
+def test_v2_rescoring_is_score_only_and_does_not_copy_answers_or_unsafe_paths(tmp_path):
+    original = {
+        "run_id": "historical-run",
+        "results": [{
+            "success": True, "mode": "vector_only", "question_id": "Q11", "category": "unanswerable",
+            "answer": "未提及南斗项目，无法回答。D:" + chr(92) + "private",
+            "sources": [{"source": "D:" + chr(92) + "private" + chr(92) + "s4-eval-org.txt"}],
+            "graph_context_count": 0,
+            "deterministic_score": {"question_correct": False, "keyword_fact_score": 1.0, "source_hit": False, "abstention_correct": True},
+        }],
+    }
+    rescored = rescore_payload_v2(original)
+    serialized = json.dumps(rescored, ensure_ascii=False)
+    assert "未提及南斗项目" not in serialized
+    assert "D:" not in serialized
+    assert rescored["results"][0]["v2"]["question_correct_v2"] is True
+    write_rescore_reports(tmp_path / "rescored", rescored)
+    assert (tmp_path / "rescored" / "results.json").exists()
+
+
 @pytest.mark.asyncio
 async def test_runner_writes_parseable_json_csv_and_markdown_reports(tmp_path):
     payload = await build_offline_runner().run(
@@ -154,6 +257,7 @@ async def test_runner_writes_parseable_json_csv_and_markdown_reports(tmp_path):
     assert json.loads((output / "results.json").read_text(encoding="utf-8"))["run_id"] == "reports"
     assert len(list(csv.DictReader((output / "results.csv").open(encoding="utf-8")))) == len(payload["results"])
     assert "Fake-only" in (output / "summary.md").read_text(encoding="utf-8")
+    assert all(row["deterministic_score_v2"]["scorer_version"] == "deterministic-v2" for row in payload["results"])
 
 
 @pytest.mark.asyncio
@@ -204,6 +308,27 @@ def test_offline_cli_uses_only_safe_run_identifier(tmp_path, monkeypatch):
     assert module.main(["--offline", "--mode", "vector_only", "--run-id", "cli-safe"]) == 0
     assert (tmp_path / ".runtime" / "evaluation" / "cli-safe" / "results.json").exists()
     assert module.main(["--offline", "--run-id", "../unsafe"]) == 1
+
+
+def test_rescore_cli_creates_a_score_only_derived_report(tmp_path, monkeypatch):
+    module = _load_cli_module()
+    monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+    source = tmp_path / ".runtime" / "evaluation" / "historical" / "results.json"
+    source.parent.mkdir(parents=True)
+    source.write_text(json.dumps({
+        "run_id": "historical",
+        "results": [{
+            "success": True, "mode": "vector_only", "question_id": "Q11", "category": "unanswerable",
+            "answer": "未提及南斗项目，无法回答。",
+            "sources": [], "graph_context_count": 0,
+            "deterministic_score": {"question_correct": False, "keyword_fact_score": 1.0, "source_hit": False, "abstention_correct": True},
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+    assert module.main(["--rescore", ".runtime/evaluation/historical/results.json"]) == 0
+    derived = tmp_path / ".runtime" / "evaluation" / "historical-rescored-v2" / "results.json"
+    output = derived.read_text(encoding="utf-8")
+    assert "未提及南斗项目" not in output
+    assert '"scorer_version": "deterministic-v2"' in output
 
 
 def test_fixture_contains_exactly_twelve_questions_with_required_categories():

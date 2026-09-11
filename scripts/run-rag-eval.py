@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import time
@@ -35,7 +36,8 @@ from providers.factory import create_chat_provider, create_embedding_provider  #
 from services.evaluation_scope import EvaluationScope  # noqa: E402
 from services.knowledge_graph import KnowledgeGraphService  # noqa: E402
 from services.rag_evaluation import (  # noqa: E402
-    RAGEvaluationRunner, SYNTHETIC_DOCUMENTS, atomic_json, run_offline_sync,
+    RAGEvaluationRunner, SYNTHETIC_DOCUMENTS, atomic_json, rescore_payload_v2,
+    run_offline_sync, write_rescore_reports,
 )
 from services.vector_store import VectorStoreService  # noqa: E402
 
@@ -253,14 +255,48 @@ async def _run_real(run_id: str) -> int:
     return 0 if metadata["overall_pass"] else 1
 
 
+def _rescore_v2(results_file: str) -> int:
+    """Create a score-only v2 derivative without changing a historical run."""
+    supplied = Path(results_file)
+    # The script aligns its current working directory to ``python/`` for the
+    # runtime settings.  CLI paths remain project-root relative for users.
+    source = (supplied if supplied.is_absolute() else PROJECT_ROOT / supplied).resolve()
+    evaluation_root = (PROJECT_ROOT / ".runtime" / "evaluation").resolve()
+    if source.name != "results.json" or evaluation_root not in source.parents:
+        print("rescoring is refused outside .runtime/evaluation/<run_id>/results.json", file=sys.stderr)
+        return 1
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        rescored = rescore_payload_v2(payload)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"rescoring failed safely: {_safe_error(exc)}", file=sys.stderr)
+        return 1
+    output = source.parent.with_name(f"{source.parent.name}-rescored-v2")
+    if output.exists() and not output.is_dir():
+        print("rescoring is refused because the v2 output path is not a directory", file=sys.stderr)
+        return 1
+    try:
+        write_rescore_reports(output, rescored)
+    except OSError as exc:
+        print(f"rescoring output failed safely: {_safe_error(exc)}", file=sys.stderr)
+        return 1
+    print(f"deterministic v2 rescoring completed: {output}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="S4 Vector RAG vs GraphRAG evaluation runner")
     parser.add_argument("--mode", choices=("vector_only", "graph_rag", "both"), default="both")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--real", action="store_true")
     parser.add_argument("--authorized-s4", action="store_true")
+    parser.add_argument("--rescore", metavar="RESULTS_JSON")
     parser.add_argument("--run-id")
     args = parser.parse_args(argv)
+    if args.rescore:
+        if args.offline or args.real or args.authorized_s4 or args.run_id:
+            parser.error("--rescore cannot be combined with evaluation execution options")
+        return _rescore_v2(args.rescore)
     if not args.offline and not args.real:
         parser.error("real evaluation is refused without --real and --authorized-s4")
     if args.offline and args.real:

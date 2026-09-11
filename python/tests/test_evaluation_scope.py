@@ -47,6 +47,18 @@ def _versioned_row(document_id, *, version=1, source="allowed.txt"):
     }
 
 
+def _scoped_graph_record(document_id, *, version=1, source="allowed.txt", evidence_key="evidence"):
+    return {
+        "source": "Alice",
+        "target": "Project",
+        "evidence_edges": [{
+            "subject": "Alice", "predicate": "OWNS", "object": "Project",
+            "direction": "forward", "document_id": str(document_id),
+            "document_version": version, "source": source, "evidence_key": evidence_key,
+        }],
+    }
+
+
 @pytest.fixture
 def document_ids():
     return str(uuid4()), str(uuid4())
@@ -140,9 +152,9 @@ async def test_neo4j_scope_filters_foreign_and_legacy_records(document_ids):
     allowed, foreign = document_ids
     graph = KnowledgeGraphService()
     graph._driver = FakeDriver([
-        {"document_id": allowed, "document_version": 1, "provenance_source": "allowed.txt"},
-        {"document_id": foreign, "document_version": 1, "provenance_source": "foreign.txt"},
-        {"provenance_source": "legacy.txt"},
+        _scoped_graph_record(allowed, evidence_key="allowed-evidence"),
+        _scoped_graph_record(foreign, source="foreign.txt", evidence_key="foreign-evidence"),
+        {"source": "Alice", "target": "legacy", "evidence_edges": []},
     ])
     diagnostics = {}
 
@@ -150,12 +162,13 @@ async def test_neo4j_scope_filters_foreign_and_legacy_records(document_ids):
         "Alice", allowed_document_ids=frozenset({allowed}), scope_diagnostics=diagnostics
     )
 
-    assert records == [{"document_id": allowed, "document_version": 1, "provenance_source": "allowed.txt"}]
+    assert records == [_scoped_graph_record(allowed, evidence_key="allowed-evidence")]
     assert diagnostics["graph_scope_rejected_count"] == 2
     query, parameters = graph._driver.queries[-1]
     assert "rel.document_id IN $allowed_document_ids" in query
     assert parameters["allowed_document_ids"] == [allowed]
     assert "rel.document_id IS NULL" not in query
+    assert "evidence_edges" in query and "evidence_key" in query
 
 
 @pytest.mark.asyncio

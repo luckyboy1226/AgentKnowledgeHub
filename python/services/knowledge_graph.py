@@ -433,10 +433,25 @@ class KnowledgeGraphService:
 
     @staticmethod
     def _in_evaluation_scope(record: dict[str, Any], allowed_document_ids: frozenset[str]) -> bool:
-        """Scoped graph reads require explicit provenance, never legacy facts."""
-        document_id = record.get("document_id")
-        version = record.get("document_version")
-        return str(document_id) in allowed_document_ids and isinstance(version, int) and version >= 1
+        """Scoped graph reads require complete per-edge provenance, never legacy facts."""
+        edges = record.get("evidence_edges")
+        if not isinstance(edges, list) or not edges:
+            return False
+        for edge in edges:
+            if not isinstance(edge, dict):
+                return False
+            if not all(isinstance(edge.get(field), str) and edge[field].strip() for field in (
+                "subject", "predicate", "object", "direction", "document_id", "source", "evidence_key",
+            )):
+                return False
+            if edge.get("direction") not in {"forward", "reverse"}:
+                return False
+            if str(edge.get("document_id")) not in allowed_document_ids:
+                return False
+            version = edge.get("document_version")
+            if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+                return False
+        return True
 
     async def get_neighbors(
         self,
@@ -463,17 +478,55 @@ class KnowledgeGraphService:
                 "limit": 50,
                 "allowed_document_ids": sorted(allowed_document_ids),
             }
-        cypher = f"""
-        MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
-        WHERE ALL(rel IN rels WHERE {relationship_filter})
-        RETURN start.name AS source,
-          [rel IN rels | type(rel)] AS relations,
-          neighbor.name AS target, neighbor.type AS target_type, neighbor.description AS target_desc,
-          head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.document_id]) AS document_id,
-          head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.document_version]) AS document_version,
-          head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.source]) AS provenance_source
-        LIMIT $limit
-        """
+        if allowed_document_ids is None:
+            cypher = f"""
+            MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
+            WHERE ALL(rel IN rels WHERE {relationship_filter})
+            RETURN start.name AS source,
+              [rel IN rels | type(rel)] AS relations,
+              neighbor.name AS target, neighbor.type AS target_type, neighbor.description AS target_desc,
+              head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.document_id]) AS document_id,
+              head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.document_version]) AS document_version,
+              head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.source]) AS provenance_source
+            LIMIT $limit
+            """
+        else:
+            # The traversal is undirected for recall, but each returned edge
+            # preserves its stored head -> tail direction and says whether the
+            # path traversed it forward or reverse.  This data shape is only
+            # used by the internal, scoped evaluation path.
+            cypher = f"""
+            MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
+            WITH path, nodes(path) AS path_nodes, relationships(path) AS rels
+            WHERE ALL(rel IN rels WHERE {relationship_filter})
+            RETURN path_nodes[0].name AS source,
+              path_nodes[size(path_nodes) - 1].name AS target,
+              [index IN range(0, size(rels) - 1) |
+                CASE WHEN startNode(rels[index]) = path_nodes[index]
+                  THEN {{
+                    subject: path_nodes[index].name,
+                    predicate: coalesce(rels[index].predicate, type(rels[index])),
+                    object: path_nodes[index + 1].name,
+                    direction: 'forward',
+                    document_id: rels[index].document_id,
+                    document_version: rels[index].document_version,
+                    source: rels[index].source,
+                    evidence_key: rels[index].evidence_key
+                  }}
+                  ELSE {{
+                    subject: path_nodes[index + 1].name,
+                    predicate: coalesce(rels[index].predicate, type(rels[index])),
+                    object: path_nodes[index].name,
+                    direction: 'reverse',
+                    document_id: rels[index].document_id,
+                    document_version: rels[index].document_version,
+                    source: rels[index].source,
+                    evidence_key: rels[index].evidence_key
+                  }}
+                END
+              ] AS evidence_edges
+            LIMIT $limit
+            """
         records = await self.execute_cypher(cypher, parameters)
         if allowed_document_ids is None:
             return records

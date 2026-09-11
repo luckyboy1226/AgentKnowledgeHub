@@ -284,7 +284,11 @@ class QAAgent:
                 allowed_document_ids=verified_scope.allowed_document_ids,
                 scope_diagnostics=diagnostics,
             )
-        top_contexts = self._hybrid_rerank(vector_contexts + graph_contexts)[:8]
+        # Scoped evaluation must not give every graph record an unconditional
+        # score boost: provenance-complete evidence competes on its own score.
+        top_contexts = self._hybrid_rerank(
+            vector_contexts + graph_contexts, evaluation_scoped=True
+        )[:8]
         answer_text, reasoning = await self._generate_answer(
             plan.question, top_contexts, plan.intent
         )
@@ -432,7 +436,6 @@ class QAAgent:
         if not self.knowledge_graph:
             return []
 
-        del question
         entities = rewritten.get("entities", [])
         contexts: list[RetrievedContext] = []
         for entity_name in entities[:10]:
@@ -447,31 +450,81 @@ class QAAgent:
                         scope_diagnostics=scope_diagnostics,
                     )
                 for record in records:
-                    if allowed_document_ids is not None and (
-                        str(record.get("document_id")) not in allowed_document_ids
-                        or not isinstance(record.get("document_version"), int)
-                    ):
-                        if scope_diagnostics is not None:
-                            scope_diagnostics["graph_scope_rejected_count"] = (
-                                scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
-                            )
-                        continue
-                    source = self.knowledge_graph.safe_source(record.get("provenance_source", ""))
-                    contexts.append(RetrievedContext(
-                        content=str(record),
-                        source=source or "knowledge_graph",
-                        score=0.8,
-                        retrieval_type="graph",
-                        metadata={
+                    if allowed_document_ids is not None:
+                        evidence = self._scoped_graph_evidence(record, allowed_document_ids)
+                        if evidence is None:
+                            if scope_diagnostics is not None:
+                                scope_diagnostics["graph_scope_rejected_count"] = (
+                                    scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
+                                )
+                            continue
+                        source = self.knowledge_graph.safe_source(evidence[0]["source"])
+                        content = self._format_scoped_graph_evidence(evidence)
+                        metadata = {
+                            "entity": entity_name,
+                            "document_id": evidence[0]["document_id"],
+                            "document_version": evidence[0]["document_version"],
+                            "source": source,
+                            "graph_evidence": evidence,
+                            "evaluation_scoped": True,
+                        }
+                    else:
+                        source = self.knowledge_graph.safe_source(record.get("provenance_source", ""))
+                        content = str(record)
+                        metadata = {
                             "entity": entity_name,
                             "document_id": record.get("document_id"),
                             "document_version": record.get("document_version"),
                             "source": source,
-                        },
+                        }
+                    contexts.append(RetrievedContext(
+                        content=content,
+                        source=source or "knowledge_graph",
+                        score=0.8,
+                        retrieval_type="graph",
+                        metadata=metadata,
                     ))
             except Exception:
                 continue
         return contexts
+
+    @staticmethod
+    def _scoped_graph_evidence(
+        record: dict[str, Any], allowed_document_ids: frozenset[str]
+    ) -> list[dict[str, Any]] | None:
+        """Return a sanitized, complete edge list or fail closed for evaluation."""
+        raw_edges = record.get("evidence_edges")
+        if not isinstance(raw_edges, list) or not raw_edges:
+            return None
+        normalized: list[dict[str, Any]] = []
+        for raw in raw_edges:
+            if not isinstance(raw, dict):
+                return None
+            values = {field: " ".join(str(raw.get(field, "")).split()) for field in (
+                "subject", "predicate", "object", "direction", "document_id", "source", "evidence_key",
+            )}
+            values["source"] = values["source"].replace("\\", "/").rsplit("/", 1)[-1]
+            if not all(values.values()) or values["direction"] not in {"forward", "reverse"}:
+                return None
+            if values["document_id"] not in allowed_document_ids:
+                return None
+            version = raw.get("document_version")
+            if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+                return None
+            normalized.append({**values, "document_version": version})
+        return normalized
+
+    @staticmethod
+    def _format_scoped_graph_evidence(evidence: list[dict[str, Any]]) -> str:
+        """Format stored edges faithfully; no predicate is inferred or rewritten."""
+        lines = ["图谱证据（逐边原样陈述，不推导未提供的关系）："]
+        for edge in evidence:
+            lines.append(
+                f"{edge['subject']} --{edge['predicate']}--> {edge['object']} "
+                f"[方向: {edge['direction']}; 来源: {edge['source']}, v{edge['document_version']}; "
+                f"evidence: {edge['evidence_key']}]"
+            )
+        return "\n".join(lines)
 
     @staticmethod
     def _normalize_read_only_cypher(cypher: object) -> str | None:
@@ -499,12 +552,17 @@ class QAAgent:
     # ── hybrid reranking ─────────────────────────────────────
 
     @staticmethod
-    def _hybrid_rerank(contexts: list[RetrievedContext]) -> list[RetrievedContext]:
+    def _hybrid_rerank(
+        contexts: list[RetrievedContext], *, evaluation_scoped: bool = False
+    ) -> list[RetrievedContext]:
         """
         混合重排序：向量分数 + 图谱分数加权
         图谱检索结果天然带有结构化关系，给予略高权重
         """
-        weight_map = {"vector": 1.0, "graph": 1.2, "hybrid": 1.1}
+        weight_map = (
+            {"vector": 1.0, "graph": 1.0, "hybrid": 1.0}
+            if evaluation_scoped else {"vector": 1.0, "graph": 1.2, "hybrid": 1.1}
+        )
         for ctx in contexts:
             ctx.score *= weight_map.get(ctx.retrieval_type, 1.0)
 

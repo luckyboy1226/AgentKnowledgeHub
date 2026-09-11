@@ -22,6 +22,9 @@ from services.evaluation_scope import EvaluationScope, require_verified_scope
 _ABSOLUTE_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|[\\/]{1,2})")
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$")
 _ABSTENTION_MARKERS = ("无法回答", "无法确定", "信息不足", "未提供", "未找到", "没有相关")
+_ABSTENTION_MARKERS_V2 = _ABSTENTION_MARKERS + ("未提及", "未找到相关", "没有相关信息")
+_NEGATION_MARKERS_V2 = ("否", "不负责", "并非", "不是负责人", "没有负责", "并不负责", "无法得出")
+SCORER_V2 = "deterministic-v2"
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,12 @@ class EvaluationCase:
     graph_advantage_expected: bool = False
     offline_entities: tuple[str, ...] = ()
     offline_answer: str = ""
+    # v2 keeps finite, case-owned rules rather than trying to infer answer
+    # semantics with another model.  They are intentionally only used by the
+    # evaluation scorer, never by production retrieval or generation.
+    negation_target_terms: tuple[str, ...] = ()
+    positive_claim_patterns: tuple[str, ...] = ()
+    abstention_positive_claim_patterns: tuple[str, ...] = ()
 
 
 # The 12 cases intentionally have overlapping categories (for example,
@@ -50,9 +59,9 @@ EVALUATION_CASES: tuple[EvaluationCase, ...] = (
     EvaluationCase("Q07", "谁同时满足数据平台部成员和项目负责人？", "constraint_multi_hop", ("陈航", "北极星"), ("s4-eval-org.txt", "s4-eval-projects.txt"), graph_advantage_expected=True, offline_entities=("陈航", "数据平台部", "北极星"), offline_answer="陈航属于数据平台部，并负责北极星检索项目。"),
     EvaluationCase("Q08", "赵启负责的服务与哪个项目存在依赖关系？", "multi_hop", ("Atlas", "北极星"), ("s4-eval-projects.txt",), graph_advantage_expected=True, offline_entities=("赵启", "Atlas"), offline_answer="赵启负责 Atlas 事件服务，北极星检索项目依赖该服务。"),
     EvaluationCase("Q09", "晨星报表项目使用哪些技术？", "distractor_fact", ("PostgreSQL", "Elasticsearch"), ("s4-eval-distractors.txt",), offline_entities=("晨星"), offline_answer="晨星报表项目使用 PostgreSQL 和 Elasticsearch。"),
-    EvaluationCase("Q10", "周宁是否负责北极星检索项目？", "distractor_negation", ("否", "周宁", "晨星"), ("s4-eval-org.txt", "s4-eval-distractors.txt"), forbidden_keywords=("周宁负责北极星",), graph_advantage_expected=True, offline_entities=("周宁", "北极星"), offline_answer="否，周宁不负责北极星；周宁参与晨星报表的数据分析。"),
-    EvaluationCase("Q11", "南斗项目的负责人是谁？", "unanswerable", (), (), requires_abstention=True, offline_answer="资料未提供南斗项目负责人，无法回答。"),
-    EvaluationCase("Q12", "星河云智公司的 CEO 是谁？", "unanswerable", (), (), requires_abstention=True, offline_answer="现有资料未提供星河云智 CEO 信息，无法确定。"),
+    EvaluationCase("Q10", "周宁是否负责北极星检索项目？", "distractor_negation", ("否", "周宁", "晨星"), ("s4-eval-org.txt", "s4-eval-distractors.txt"), forbidden_keywords=("周宁负责北极星",), graph_advantage_expected=True, offline_entities=("周宁", "北极星"), offline_answer="否，周宁不负责北极星；周宁参与晨星报表的数据分析。", negation_target_terms=("周宁", "北极星"), positive_claim_patterns=(r"周宁\s*(?:确实|正是|就是|担任|作为|负责(?:人)?)\s*北极星", r"北极星(?:检索项目)?\s*(?:由|负责人是|负责人为)\s*周宁")),
+    EvaluationCase("Q11", "南斗项目的负责人是谁？", "unanswerable", (), (), requires_abstention=True, offline_answer="资料未提供南斗项目负责人，无法回答。", abstention_positive_claim_patterns=(r"南斗(?:项目)?(?:的)?负责人\s*(?:是|为)\s*(?!谁|什么|未知|不详|未提供|无法)",)),
+    EvaluationCase("Q12", "星河云智公司的 CEO 是谁？", "unanswerable", (), (), requires_abstention=True, offline_answer="现有资料未提供星河云智 CEO 信息，无法确定。", abstention_positive_claim_patterns=(r"CEO\s*(?:是|为)\s*(?!谁|什么|未知|不详|未提供|无法)",)),
 )
 
 
@@ -145,6 +154,175 @@ class DeterministicScorer:
         }
 
 
+class DeterministicScorerV2:
+    """Versioned, explainable scoring that keeps answer and source evidence separate.
+
+    The implementation uses only finite fixture rules.  It deliberately does
+    not re-use the v1 substring-only forbidden check: a phrase such as
+    ``周宁并不负责北极星`` must not be mistaken for the opposite claim.
+    """
+
+    @staticmethod
+    def _positive_claim_present(case: EvaluationCase, answer: str) -> bool:
+        return any(re.search(pattern, answer, flags=re.IGNORECASE) for pattern in case.positive_claim_patterns)
+
+    @staticmethod
+    def _abstention_invents_target(case: EvaluationCase, answer: str) -> bool:
+        return any(
+            re.search(pattern, answer, flags=re.IGNORECASE)
+            for pattern in case.abstention_positive_claim_patterns
+        )
+
+    @classmethod
+    def score(
+        cls,
+        case: EvaluationCase,
+        *,
+        answer: str,
+        sources: list[dict[str, Any]],
+        mode: RetrievalMode,
+        graph_context_count: int,
+    ) -> dict[str, Any]:
+        normalized_answer = answer.casefold()
+        source_names = {safe_source(source.get("source", "")) for source in sources}
+        expected_source_set = set(case.expected_sources)
+        source_coverage = (
+            1.0 if case.requires_abstention
+            else round(len(expected_source_set & source_names) / len(expected_source_set), 3)
+            if expected_source_set else 1.0
+        )
+        source_complete = source_coverage == 1.0
+        graph_participated = graph_context_count > 0
+
+        if case.requires_abstention:
+            abstention_marker = next((marker for marker in _ABSTENTION_MARKERS_V2 if marker in answer), None)
+            invented_target_fact = cls._abstention_invents_target(case, answer)
+            abstention_score = 1.0 if abstention_marker and not invented_target_fact else 0.0
+            answer_semantic_score = abstention_score
+            citation_behavior = "scope_sources_allowed" if sources else "no_sources_required"
+            answer_rule = "abstention_marker" if abstention_marker else "missing_abstention_marker"
+            if invented_target_fact:
+                answer_rule = "invented_target_fact"
+            required_hits: list[str] = []
+            forbidden_hits: list[str] = []
+        elif case.negation_target_terms:
+            negation_marker = next((marker for marker in _NEGATION_MARKERS_V2 if marker in answer), None)
+            targets_present = all(term in answer for term in case.negation_target_terms)
+            positive_claim = cls._positive_claim_present(case, answer)
+            answer_semantic_score = 1.0 if negation_marker and targets_present and not positive_claim else 0.0
+            abstention_score = None
+            citation_behavior = "supporting_sources" if sources else "no_supporting_sources"
+            answer_rule = "negation_supported" if answer_semantic_score else "negation_not_established"
+            required_hits = [term for term in case.negation_target_terms if term in answer]
+            forbidden_hits = ["positive_claim"] if positive_claim else []
+        else:
+            required_hits = [keyword for keyword in case.required_keywords if keyword.casefold() in normalized_answer]
+            forbidden_hits = [keyword for keyword in case.forbidden_keywords if keyword.casefold() in normalized_answer]
+            answer_semantic_score = round(len(required_hits) / len(case.required_keywords), 3) if case.required_keywords else 1.0
+            if forbidden_hits:
+                answer_semantic_score = 0.0
+            abstention_score = None
+            citation_behavior = "supporting_sources" if sources else "no_supporting_sources"
+            answer_rule = "keyword_rules"
+
+        graph_participation_pass = mode is not RetrievalMode.GRAPH_RAG or case.requires_abstention or graph_participated
+        # Source coverage and graph participation remain separately observable;
+        # neither is allowed to erase a semantically correct answer.
+        overall_v2 = answer_semantic_score
+        return {
+            "scorer_version": SCORER_V2,
+            "answer_semantic_score": answer_semantic_score,
+            "source_coverage_score": source_coverage,
+            "abstention_score": abstention_score,
+            "citation_behavior": citation_behavior,
+            "overall_v2": overall_v2,
+            "question_correct_v2": overall_v2 == 1.0,
+            "answer_rule": answer_rule,
+            "required_keyword_hits_v2": required_hits,
+            "forbidden_keyword_hits_v2": forbidden_hits,
+            "source_coverage_complete": source_complete,
+            "graph_participated": graph_participated,
+            "graph_participation_pass": graph_participation_pass,
+        }
+
+
+def _case_by_id(question_id: str) -> EvaluationCase:
+    for case in EVALUATION_CASES:
+        if case.question_id == question_id:
+            return case
+    raise ValueError(f"unknown evaluation question_id: {question_id}")
+
+
+def rescore_payload_v2(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a v2 score-only view without mutating a historical run payload."""
+    rows: list[dict[str, Any]] = []
+    for original in payload.get("results", []):
+        if not original.get("success"):
+            continue
+        case = _case_by_id(str(original.get("question_id", "")))
+        mode = RetrievalMode(str(original.get("mode", "")))
+        v1 = original.get("deterministic_score") or {}
+        v2 = DeterministicScorerV2.score(
+            case,
+            answer=str(original.get("answer", "")),
+            sources=list(original.get("sources") or []),
+            mode=mode,
+            graph_context_count=int(original.get("graph_context_count") or 0),
+        )
+        # Do not copy full generated answers into the derived report.
+        rows.append({
+            "mode": mode.value,
+            "question_id": case.question_id,
+            "category": case.category,
+            "v1_question_correct": bool(v1.get("question_correct")),
+            "v1_keyword_fact_score": v1.get("keyword_fact_score"),
+            "v1_source_hit": v1.get("source_hit"),
+            "v1_abstention_correct": v1.get("abstention_correct"),
+            "v2": v2,
+            "source_names": sorted({safe_source(source.get("source", "")) for source in original.get("sources", [])}),
+        })
+    summary: dict[str, dict[str, Any]] = {}
+    for mode in sorted({row["mode"] for row in rows}):
+        mode_rows = [row for row in rows if row["mode"] == mode]
+        summary[mode] = {
+            "rows": len(mode_rows),
+            "v1_question_accuracy": round(sum(row["v1_question_correct"] for row in mode_rows) / len(mode_rows), 3) if mode_rows else 0.0,
+            "v2_question_accuracy": round(sum(row["v2"]["question_correct_v2"] for row in mode_rows) / len(mode_rows), 3) if mode_rows else 0.0,
+            "v2_answer_semantic_average": round(statistics.fmean(float(row["v2"]["answer_semantic_score"]) for row in mode_rows), 3) if mode_rows else 0.0,
+            "v2_source_coverage_average": round(statistics.fmean(float(row["v2"]["source_coverage_score"]) for row in mode_rows), 3) if mode_rows else 0.0,
+        }
+    return {
+        "source_run_id": payload.get("run_id"),
+        "scorer_version": SCORER_V2,
+        "notice": "Derived deterministic rescoring only. It does not alter source answers, raw outputs, or the original v1 report.",
+        "results": rows,
+        "summary": summary,
+    }
+
+
+def write_rescore_reports(output_dir: Path, rescored: dict[str, Any]) -> None:
+    """Write score-only v2 reports atomically; generated answers are excluded."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    atomic_json(output_dir / "results.json", rescored)
+    fieldnames = ("mode", "question_id", "category", "v1_question_correct", "v1_keyword_fact_score", "v1_source_hit", "v1_abstention_correct", "v2", "source_names")
+    temporary = output_dir / "results.csv.tmp"
+    with temporary.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        for result in rescored["results"]:
+            row = dict(result)
+            row["v2"] = json.dumps(row["v2"], ensure_ascii=False, sort_keys=True)
+            row["source_names"] = json.dumps(row["source_names"], ensure_ascii=False)
+            writer.writerow(row)
+    os.replace(temporary, output_dir / "results.csv")
+    lines = ["# S4 deterministic scorer v2 rescoring", "", rescored["notice"], "", "| Mode | v1 accuracy | v2 accuracy | v2 semantic | v2 source coverage |", "|---|---:|---:|---:|---:|"]
+    for mode, values in rescored["summary"].items():
+        lines.append(f"| {mode} | {values['v1_question_accuracy']:.3f} | {values['v2_question_accuracy']:.3f} | {values['v2_answer_semantic_average']:.3f} | {values['v2_source_coverage_average']:.3f} |")
+    temporary_md = output_dir / "summary.md.tmp"
+    temporary_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.replace(temporary_md, output_dir / "summary.md")
+
+
 class RAGEvaluationRunner:
     """Run one or both modes from shared plans and write safe local reports."""
 
@@ -221,6 +399,9 @@ class RAGEvaluationRunner:
             score = DeterministicScorer.score(
                 case, answer=result.answer, sources=sources, mode=mode, graph_context_count=graph_count
             )
+            score_v2 = DeterministicScorerV2.score(
+                case, answer=result.answer, sources=sources, mode=mode, graph_context_count=graph_count
+            )
             return {
                 "run_id": plan.run_id,
                 "mode": mode.value,
@@ -241,6 +422,7 @@ class RAGEvaluationRunner:
                     plan_before, plan_after, chat_before, vector_before, embedding_before, graph_before
                 ),
                 "deterministic_score": score,
+                "deterministic_score_v2": score_v2,
                 "failure_summary": None,
             }
         except Exception as exc:
@@ -253,7 +435,8 @@ class RAGEvaluationRunner:
                 "vector_scope_rejected_count": 0, "graph_scope_rejected_count": 0,
                 "scope_verified": self.scope.is_verified(),
                 "model_call_counts": self._call_counts(plan_before, plan_after, chat_before, vector_before, embedding_before, graph_before),
-                "deterministic_score": None, "failure_summary": type(exc).__name__,
+                "deterministic_score": None, "deterministic_score_v2": None,
+                "failure_summary": type(exc).__name__,
             }
 
     def _call_counts(
@@ -292,6 +475,7 @@ class RAGEvaluationRunner:
             rows = [result for result in results if result["mode"] == mode]
             successful = [row for row in rows if row["success"]]
             correct = [row for row in successful if row.get("deterministic_score", {}).get("question_correct")]
+            correct_v2 = [row for row in successful if row.get("deterministic_score_v2", {}).get("question_correct_v2")]
             multi_hop = [row for row in successful if "multi_hop" in row["category"]]
             abstentions = [row for row in successful if row["category"] == "unanswerable"]
             graph_rows = [row for row in successful if row["graph_context_count"] > 0]
@@ -300,6 +484,10 @@ class RAGEvaluationRunner:
                 "questions": len(rows),
                 "success_rate": round(len(successful) / len(rows), 3) if rows else 0.0,
                 "question_accuracy": round(len(correct) / len(rows), 3) if rows else 0.0,
+                "question_accuracy_v2": round(len(correct_v2) / len(rows), 3) if rows else 0.0,
+                "answer_semantic_score_v2": round(
+                    statistics.fmean(row["deterministic_score_v2"]["answer_semantic_score"] for row in successful), 3
+                ) if successful else 0.0,
                 "keyword_fact_hit_rate": round(
                     statistics.fmean(row["deterministic_score"]["keyword_fact_score"] for row in successful), 3
                 ) if successful else 0.0,
@@ -321,7 +509,7 @@ class RAGEvaluationRunner:
             "run_id", "mode", "question_id", "category", "success", "http_status", "latency_ms",
             "answer", "sources", "vector_context_count", "graph_context_count", "allowed_document_ids_count",
             "vector_scope_rejected_count", "graph_scope_rejected_count", "scope_verified", "model_call_counts",
-            "deterministic_score", "failure_summary",
+            "deterministic_score", "deterministic_score_v2", "failure_summary",
         ]
         temporary = output_dir / "results.csv.tmp"
         with temporary.open("w", newline="", encoding="utf-8") as stream:
@@ -329,13 +517,13 @@ class RAGEvaluationRunner:
             writer.writeheader()
             for result in payload["results"]:
                 row = dict(result)
-                for name in ("sources", "model_call_counts", "deterministic_score"):
+                for name in ("sources", "model_call_counts", "deterministic_score", "deterministic_score_v2"):
                     row[name] = json.dumps(row[name], ensure_ascii=False, sort_keys=True)
                 writer.writerow(row)
         os.replace(temporary, output_dir / "results.csv")
-        lines = ["# Offline RAG evaluation", "", payload["notice"], "", "| Mode | Questions | Success | Accuracy | Graph participation |", "|---|---:|---:|---:|---:|"]
+        lines = ["# Offline RAG evaluation", "", payload["notice"], "", "| Mode | Questions | Success | v1 accuracy | v2 accuracy | Graph participation |", "|---|---:|---:|---:|---:|---:|"]
         for mode, values in payload["summary"].items():
-            lines.append(f"| {mode} | {values['questions']} | {values['success_rate']:.3f} | {values['question_accuracy']:.3f} | {values['graph_participation_rate'] if values['graph_participation_rate'] is not None else '-'} |")
+            lines.append(f"| {mode} | {values['questions']} | {values['success_rate']:.3f} | {values['question_accuracy']:.3f} | {values['question_accuracy_v2']:.3f} | {values['graph_participation_rate'] if values['graph_participation_rate'] is not None else '-'} |")
         temporary_md = output_dir / "summary.md.tmp"
         temporary_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.replace(temporary_md, output_dir / "summary.md")
@@ -448,20 +636,26 @@ class OfflineKnowledgeGraph:
         source = self.entity_source.get(entity_name)
         if not source:
             return []
+        document_id = offline_document_id(source)
         return [{
             "source": entity_name, "relations": ["RELATED_TO"], "target": "synthetic",
             "target_type": "Concept", "target_desc": "offline evidence",
-            "document_id": offline_document_id(source), "document_version": 1,
-            "provenance_source": source,
+            "evidence_edges": [{
+                "subject": entity_name, "predicate": "RELATED_TO", "object": "synthetic",
+                "direction": "forward", "document_id": document_id, "document_version": 1,
+                "source": source, "evidence_key": f"offline-{document_id[:8]}-{entity_name}",
+            }],
         }, {
             "source": entity_name, "relations": ["RELATED_TO"], "target": "foreign",
             "target_type": "Concept", "target_desc": "foreign evidence",
-            "document_id": str(uuid5(NAMESPACE_URL, "foreign-graph")), "document_version": 1,
-            "provenance_source": "foreign.txt",
+            "evidence_edges": [{
+                "subject": entity_name, "predicate": "RELATED_TO", "object": "foreign",
+                "direction": "forward", "document_id": str(uuid5(NAMESPACE_URL, "foreign-graph")),
+                "document_version": 1, "source": "foreign.txt", "evidence_key": "foreign-evidence",
+            }],
         }, {
             "source": entity_name, "relations": ["RELATED_TO"], "target": "legacy",
-            "target_type": "Concept", "target_desc": "legacy evidence",
-            "provenance_source": "legacy.txt",
+            "target_type": "Concept", "target_desc": "legacy evidence", "evidence_edges": [],
         }]
 
 
