@@ -4,7 +4,7 @@
 
 本设计只定义后续实现的最小数据与 API 改造；不改变当前 core 运行行为。目标是让新增、重复上传、更新、删除与失败恢复可审计、幂等且不会误删共享图谱实体。
 
-## 当前实现审计
+## Pre-S3 历史基线（保留用于解释改造原因）
 
 | 项目 | 当前行为 | 缺陷 |
 |---|---|---|
@@ -16,7 +16,8 @@
 | 更新/删除 | update 先删向量再重建；delete API 只删文件，更新 Agent 才尝试图谱删除 | 无跨存储事务、补偿或精确图谱 provenance。|
 | QA | Chroma 检索未按文档状态/版本过滤；图谱同样不区分有效来源 | 未来可能召回过期或删除版本。|
 
-当前公开接口为 `POST /api/ingest/upload`、`GET/DELETE /api/ingest/documents/{file_name}`、`POST /api/admin/update`。更新 Agent 已有 create/modify/delete 分支，但其版本计数和 source 均为进程内/路径级，不能作为持久版本模型。
+该历史入口曾使用 `POST /api/ingest/upload`、按文件名删除和 `/api/admin/update`；旧
+`KnowledgeUpdateAgent` 的版本计数与 source 都是进程内/路径级，不能作为持久版本模型。
 
 ## 推荐最小数据模型
 
@@ -94,10 +95,11 @@ over-fetch（`min(top_k * 5, 50)`），在应用层过滤后才截取 `top_k`。
 failed 和 deleted 新格式向量绝不进入结果；代价是若前 50 个候选多数无效，结果可能少于
 请求的 `top_k`，该限制在服务常量和离线测试中固定。
 
-本阶段公开的精确管理接口为 `stage_document_version`、
+版本化 VectorStore 的精确管理接口为 `stage_document_version`、
 `activate_document_version`、`deactivate_document_version`、
 `delete_document_version`、`delete_document`、`count_document_version` 和
-`list_document_vector_ids`。它们尚未接入上传 PUT/DELETE 或真实 collection。
+`list_document_vector_ids`。它们由 `DocumentUpdateCoordinator` 的 Saga 使用，不由旧
+文件路径工作流或 CDC 直接调用。
 
 ### Neo4j provenance
 
@@ -165,16 +167,16 @@ stateDiagram-v2
 | 方法 | 路径 | 行为 |
 |---|---|---|
 | POST | `/api/ingest/upload` | 保持旧 multipart 上传兼容；新增可选 `logical_key`，响应含 registry 字段。|
-| GET | `/api/documents` | 计划中的 namespace 文档列表；本阶段尚未暴露。|
+| GET | `/api/documents` | namespace 文档列表（如路由启用时由 registry 提供）。|
 | GET | `/api/documents/{document_id}` | 文档及版本摘要。|
 | GET | `/api/documents/{document_id}/versions` | 版本、hash、状态、计数。|
 | GET | `/api/documents/{document_id}/status` | 逻辑文档当前状态。|
-| PUT | `/api/documents/{document_id}` | 当前明确返回 `501`；未来接收 multipart bytes 创建下一 processing version。|
-| DELETE | `/api/documents/{document_id}` | 当前明确返回 `501`；等待精确 Chroma/Neo4j 删除实现。|
+| PUT | `/api/documents/{document_id}` | multipart bytes 创建下一不可变 version。|
+| DELETE | `/api/documents/{document_id}` | 精确 document Saga 删除其 versions 的向量与 provenance。|
 | POST | `/api/documents/{document_id}/retry` | 计划中的 failed/deleting 补偿重试；本阶段尚未暴露。|
 
-`/api/admin/update` 不再接受任意本机路径，当前明确返回 `501`。本阶段不暴露会
-伪造跨存储成功的 update/delete 行为。
+`/api/admin/update` 已退役并返回 `410`；它不检查、更不会接受本机 `file_path`。按文件名的
+legacy delete 同样返回 `410`。所有正式写操作使用版本化 `/api/documents` 路由，不伪造跨存储成功。
 
 ## Legacy 兼容与迁移
 
@@ -369,10 +371,25 @@ operation ID、状态 URL、document/version/hash、`changed` 与兼容的 chunk
 
 旧 `POST /api/ingest/upload` 是 create 的兼容别名；旧列表 URL 保留前端使用的
 `id/name/size/upload_time/chunks_count`，同时加入 registry identity 与 version/status。前端删除
-调用改为新的 document ID endpoint；旧按文件名 delete 仅保留给历史上传目录清理。
+调用改为新的 document ID endpoint；旧按文件名 delete 已退役，避免绕过 Saga。
 
 路由限制上传为 parser 支持的扩展名和最多 25 MiB 的 bytes；拒绝空文件、规范化 traversal/
 drive/UNC filename，且不接受 `file_path` 参数。错误映射为 400（输入）、404（不存在）、409
 （lease/状态冲突）、413（超限）、422（解析/抽取结果无效）、503（依赖不可用）与 504（超时）；
 响应没有堆栈、连接串或 provider 原文。所有本阶段 API 验证都使用 FastAPI TestClient 和 fake
 registry/coordinator，不运行 lifespan、不调用模型且不访问真实数据库。
+
+## S3.5：唯一正式写入入口
+
+`DocumentUpdateCoordinator` 是唯一正式的文档 create/update/delete 实现。调用链为
+`POST|PUT|DELETE /api/documents` → Coordinator → Registry + versioned VectorStore + provenance-aware
+KnowledgeGraphService。Coordinator 负责 operation journal、状态机、stage/activate 与失败补偿；
+路由、LangGraph 和未来 CDC 都不得直接调用 Chroma 或 Neo4j 写入/删除方法。
+
+`KnowledgeUpdateAgent` 已退役为只抛出 `DeprecatedUpdatePathError` 的兼容桩，不能再根据本机
+路径生成 document ID，也不存在 delete-and-rebuild 分支。`delete_by_doc_id` 与 `delete_by_source`
+仅保留用于人工确认的 legacy 迁移/维护清理；它们不属于 API、Coordinator 或未来 CDC 的允许路径。
+
+Kafka/CDC 当前未实现。未来事件适配器只能验证稳定 `logical_key`，并将受控 bytes 或对象引用
+提交给 Coordinator；不得将事件中的 `file_path`、任意 source 或自由文本当作删除条件，也不得
+自行写入 MongoDB、Chroma 或 Neo4j。

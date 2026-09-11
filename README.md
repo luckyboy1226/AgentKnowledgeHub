@@ -11,7 +11,7 @@
 
 **一个企业级的「多Agent协作」知识管理系统**
 
-4个AI Agent分工协作，完成企业知识的全生命周期管理：文档解析 → 知识抽取 → 智能问答 → 增量更新
+三个 AI Agent 与版本化协调器协作，完成受控文档处理与智能问答。
 
 [快速开始](#-快速开始) · [系统架构](#-系统架构) · [功能演示](#-功能演示) · [API文档](#-api-接口) 
 
@@ -64,16 +64,16 @@ Agent（智能体）就是一个"能思考、能执行"的AI程序。它可以�
 
 ## 🎯 项目简介
 
-**AgentKnowledgeHub** 包含 **4个核心Agent**，通过 [LangGraph](https://langchain-ai.github.io/langgraph/) 有向图编排，实现企业知识的全链路智能处理。
+**AgentKnowledgeHub** 包含三个核心 Agent，并以 `DocumentUpdateCoordinator` 作为唯一正式文档写入入口；LangGraph 仅编排带 checkpoint 的问答流程。
 
-### 4个Agent是什么，分别做什么？
+### 核心组件
 
 | Agent | 中文名 | 职责 | 类比理解 |
 |-------|--------|------|----------|
 | `DocParserAgent` | 文档解析Agent | 把PDF/图片/表格等各种格式的文档"读懂"，切割成小段落 | 超强秘书，能看懂任何格式的文件 |
 | `KnowledgeExtractAgent` | 知识抽取Agent | 从文本中自动提取人名、公司、关系等结构化信息 | 分析师，把信息整理成知识图谱 |
 | `QAAgent` | 问答Agent | 接收用户问题，同时查向量库和知识图谱，生成精准答案 | 专家顾问，综合多源信息回答 |
-| `KnowledgeUpdateAgent` | 知识更新Agent | 监听文档变更，只更新变化的部分，保持知识库最新 | 勤快管理员，实时维护知识库 |
+| `DocumentUpdateCoordinator` | 文档更新协调器 | 通过 Mongo Registry、Chroma 版本化、Neo4j provenance 和 Saga 补偿完成创建、更新、删除 | 可审计的事务协调者 |
 
 ### 五大技术亮点
 
@@ -81,7 +81,7 @@ Agent（智能体）就是一个"能思考、能执行"的AI程序。它可以�
 |------|------|-------------|
 | **多模态RAG** | 不只处理文字，还能理解PDF里的图片、表格、流程图 | 传统系统只能处理纯文字 |
 | **GraphRAG (知识图谱)** | 用图数据库存储实体关系，支持多跳推理 | 纯向量检索无法处理"关系型"和"多步推理"问题 |
-| **CDC增量更新** | 文档变了只更新变化的部分 | 传统方案每次全量重建，1000个文档改5个要30分钟 |
+| **版本化增量更新** | 新版本先 stage，成功后切换 current，失败则精确补偿 | 避免先删旧版本导致数据丢失 |
 | **记忆系统** | 支持会话记忆、用户画像和个性设置 | 提供个性化对话体验 |
 | **Checkpoint 容灾恢复** | MongoDB 持久化每步状态，OOM 崩溃后自动恢复 | 进程崩溃导致全部工作丢失，需从头重跑 |
 
@@ -98,23 +98,17 @@ Agent（智能体）就是一个"能思考、能执行"的AI程序。它可以�
 └──────────────┬───────────────────────────┬───────────────┘
                │                           │
 ┌──────────────▼───────────────────────────▼───────────────┐
-│            编排引擎 (LangGraph 有向图 + Checkpoint)         │
-│    ┌─────────────┬──────────────┬──────────────┐         │
-│    │ 文档入库流程  │   问答流程    │  增量更新流程  │         │
-│    └──────┬──────┴──────┬───────┴──────┬───────┘         │
-└───────────│─────────────│──────────────│─────────────────┘
-            │             │              │
-┌───────────▼──┐ ┌───────▼────┐ ┌───────▼──────┐ ┌────────────┐
-│ 文档解析Agent │ │  问答Agent  │ │ 知识更新Agent │ │ 知识抽取Agent│
-│              │ │            │ │              │ │            │
-│ - PDF解析    │ │ - 意图识别  │ │ - 文件监听    │ │ - NER实体识别│
-│ - 图片OCR    │ │ - 向量检索  │ │ - CDC消费    │ │ - 关系抽取  │
-│ - 表格提取   │ │ - 图谱检索  │ │ - 差量对比    │ │ - 事件抽取  │
-│ - 文档分块   │ │ - 混合排序  │ │ - 增量更新    │ │ - 三元组生成│
-└──────┬───────┘ │ - 答案生成  │ │ - 版本管理    │ └─────┬──────┘
-       │         └──┬────┬────┘ └──────┬───────┘       │
-       │            │    │             │               │
-┌──────▼────────────▼────│─────────────▼───────────────▼──┐
+│   DocumentUpdateCoordinator / LangGraph QA + Checkpoint    │
+└───────────┬───────────────────────┬───────────────────────┘
+            │                       │
+┌───────────▼─────────┐     ┌───────▼───────┐
+│ 文档处理协调器         │     │   问答Agent   │
+│ - 上传 bytes 校验      │     │ - 向量/图谱检索│
+│ - 解析与知识抽取       │     │ - 答案生成     │
+│ - stage/activate/Saga │     └───────┬───────┘
+└───────────┬─────────┘             │
+            │                       │
+┌───────────▼───────────────────────▼────────────────────────┐
 │                        存储层                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐     │
 │  │ ChromaDB /  │  │  Neo4j       │  │   SQLite     │     │
@@ -128,7 +122,7 @@ Agent（智能体）就是一个"能思考、能执行"的AI程序。它可以�
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 三条工作流水线（每个数据怎么流转的）
+### 文档与问答流程（每个数据怎么流转的）
 
 **流水线1：文档入库**（上传文档时触发）
 
@@ -178,24 +172,9 @@ Agent（智能体）就是一个"能思考、能执行"的AI程序。它可以�
     返回答案 + 来源引用
 ```
 
-**流水线3：增量更新**（文档修改时触发）
-
-```
-文档被修改 / 数据库记录更新
-     │
-     ▼
-CDC事件产生（通过文件监听或Kafka）
-     │
-     ▼
-知识更新Agent
-  ├── 差量分析：找出哪些部分变了
-  ├── 增量解析：只重新处理变化的内容
-  └── 版本管理：记录更新时间和版本号
-     │
-     ├──────────────┐
-     ▼              ▼
-更新向量库        更新知识图谱
-```
+文档更新通过同一版本化 Coordinator 执行：新版本先写入 processing/staged 数据，Chroma 与
+Neo4j 成功后才切换 current；失败仅补偿目标版本。Kafka/CDC 是后续事件适配工作，当前没有
+worker，也不会监听本地路径或直接写存储。
 
 ---
 
@@ -210,7 +189,7 @@ CDC事件产生（通过文件监听或Kafka）
 | **向量数据库** | [ChromaDB](https://www.trychroma.com/) / [PGVector](https://github.com/pgvector/pgvector) | ChromaDB开箱即用；PGVector适合已有PostgreSQL的企业 |
 | **知识图谱** | [Neo4j](https://neo4j.com/) | 图数据库的事实标准，Cypher查询语言强大 |
 | **Checkpoint存储** | [MongoDB](https://www.mongodb.com/) + [langgraph-checkpoint-mongodb](https://github.com/langchain-ai/langgraph) | LangGraph 原生支持，自动持久化每步状态，崩溃可恢复 |
-| **消息队列** | [Apache Kafka](https://kafka.apache.org/) | CDC事件流处理的工业标准 |
+| **消息队列** | [Apache Kafka](https://kafka.apache.org/) | optional/experimental 基础设施；CDC worker 尚未实现 |
 | **API框架** | [FastAPI](https://fastapi.tiangolo.com/) | 异步高性能，自动生成OpenAPI/Swagger文档 |
 | **文档解析** | [Unstructured](https://unstructured.io/) + PyPDF2 + Tesseract | 多模态文档解析全家桶 |
 | **容器化** | [Docker Compose](https://docs.docker.com/compose/) | 一键启动所有依赖服务 |
@@ -441,33 +420,15 @@ print(result.confidence) # 置信度分数
 # 5. LLM生成 → 综合所有信息，生成结构化答案
 ```
 
-### 功能4：CDC 增量更新（只更新变化的部分）
+### 功能4：版本化文档更新
 
-```python
-from agents.knowledge_update_agent import KnowledgeUpdateAgent
+正式创建、更新、删除只通过 `POST /api/documents`、
+`PUT /api/documents/{document_id}` 和 `DELETE /api/documents/{document_id}`。
+这些路由统一委托给 `DocumentUpdateCoordinator`；它不会接受任意本机路径，也不会采用
+“先删 Chroma 再重建”的旧流程。
 
-update_agent = KnowledgeUpdateAgent(...)
-
-# 场景：你修改了一个PDF文件的第3页
-
-# ❌ 传统做法（全量更新）：
-#   1. 删除该文档所有向量 （删 1000 条）
-#   2. 重新解析整个PDF     （解析 50 页）
-#   3. 重新入库所有内容    （写入 1000 条）
-#   耗时：~30 分钟
-
-# ✅ CDC做法（增量更新）：
-#   1. 检测到第3页内容变化
-#   2. 只重新解析第3页
-#   3. 只更新第3页相关的向量和知识图谱节点
-#   耗时：~30 秒（快60倍！）
-
-await update_agent.process_cdc_event(event={
-    "operation": "UPDATE",
-    "resource_path": "/docs/年度报告.pdf",
-    "changed_pages": [3]
-})
-```
+Kafka/CDC 目前**未实现**。未来 CDC 只能将已校验的稳定 `logical_key` 与受控内容或对象引用
+转换为 Coordinator 请求，不能直接写 MongoDB、Chroma 或 Neo4j。
 
 ### 功能5：记忆系统
 
@@ -521,23 +482,21 @@ workflows = build_knowledge_graph_workflow(
 )
 
 # 第一次调用 — 正常执行
-config = {"configurable": {"thread_id": "ingest-report.pdf"}}
-result = await workflows["ingest"].ainvoke(
-    {"file_paths": ["report.pdf"], "request_id": "req-001"},
+config = {"configurable": {"thread_id": "qa-session-001"}}
+result = await workflows["qa"].ainvoke(
+    {"question": "文档中的关键结论是什么？", "request_id": "req-001"},
     config=config,
 )
-# 节点执行顺序: parse → extract → store_vectors → store_graph
-# 每步自动写入 MongoDB checkpoint
+# QA 节点执行后自动写入 MongoDB checkpoint
 
 # ⚠️ 假设进程在 store_vectors 节点 OOM 崩溃了...
 
 # 重启后用相同 thread_id 调用 — 自动从 checkpoint 恢复
-result = await workflows["ingest"].ainvoke(
-    {"file_paths": ["report.pdf"], "request_id": "req-001"},
+result = await workflows["qa"].ainvoke(
+    {"question": "文档中的关键结论是什么？", "request_id": "req-001"},
     config=config,
 )
-# LangGraph 检测到 parse、extract 已有 checkpoint → 跳过
-# store_graph 重新执行（幂等保护确保不重复写入）
+# LangGraph 加载同一会话的 checkpoint，并保持节点幂等
 ```
 
 **核心机制：**
@@ -548,7 +507,7 @@ result = await workflows["ingest"].ainvoke(
 | **thread_id 恢复** | 用相同 `thread_id` 调用 `ainvoke()`，LangGraph 自动加载最近 checkpoint |
 | **幂等保护** | `IdempotentNode` 装饰器通过 `request_id` 去重，防止重试产生副作用 |
 | **超时重试** | 节点执行超时后自动重试，指数退避（2s → 4s → 8s），最多 3 次 |
-| **死循环防护** | Update Pipeline 最多重试 3 次，`retry_count` 累加控制 |
+| **写入安全边界** | 文档写入不属于此工作流，只能通过 DocumentUpdateCoordinator 的 Saga |
 
 ---
 
@@ -569,18 +528,18 @@ AgentKnowledgeHub/
 │   └── tech-deep-dive.md              ← 核心代码逐行讲解
 │
 ├── python/                            ← Python后端实现（功能最完整）
-│   ├── agents/                        ← 4个核心Agent
+│   ├── agents/                        ← 3个核心Agent
 │   │   ├── doc_parser_agent.py        ← 文档解析Agent
 │   │   ├── knowledge_extract_agent.py ← 知识抽取Agent
 │   │   ├── qa_agent.py                ← 问答Agent
-│   │   └── knowledge_update_agent.py  ← 知识更新Agent
+│   │   └── knowledge_update_agent.py  ← 已弃用兼容桩（始终拒绝旧路径）
 │   ├── orchestrator/
-│   │   └── graph.py                   ← LangGraph编排引擎（3条流水线 + MongoDB Checkpoint + 幂等重试）
+│   │   └── graph.py                   ← LangGraph QA 编排（MongoDB Checkpoint + 幂等重试）
 │   ├── services/
 │   │   ├── vector_store.py            ← 向量库服务（ChromaDB/PGVector）
 │   │   ├── knowledge_graph.py         ← 知识图谱服务（Neo4j）
 │   │   ├── graph_rag.py               ← GraphRAG混合检索管道
-│   │   ├── cdc_processor.py           ← CDC增量更新处理器
+│   │   ├── cdc_processor.py           ← 预留 CDC 事件模型（worker 尚未实现）
 │   │   ├── multimodal.py              ← 多模态处理服务
 │   │   ├── memory_service.py          ← 记忆服务
 │   │   └── memory_models.py           ← 记忆数据模型
@@ -695,7 +654,7 @@ AgentKnowledgeHub/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/admin/stats` | 查看系统统计（文档数、实体数、关系数） |
-| `POST` | `/api/admin/update` | 手动触发增量更新 |
+| `POST` | `/api/admin/update` | 已退役（410；使用版本化 `/api/documents`） |
 | `GET` | `/api/health` | 健康检查 |
 
 ---

@@ -569,7 +569,12 @@ class KnowledgeGraphService:
     # ── safe legacy delete and stats ──────────────────────────
 
     async def delete_by_source(self, source: str) -> int:
-        """Legacy compatibility: delete only source-only entities that are truly isolated."""
+        """Maintenance-only cleanup for pre-S3 source-only entities.
+
+        Formal document deletion is handled exclusively by
+        ``DocumentUpdateCoordinator`` through exact provenance deletion. This
+        legacy helper must not be used by an API route or CDC adapter.
+        """
         records = await self.execute_cypher(
             """
             MATCH (e:Entity {source: $source})

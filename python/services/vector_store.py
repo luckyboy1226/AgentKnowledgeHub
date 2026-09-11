@@ -88,7 +88,12 @@ class VectorStoreService:
         return len(chunks)
 
     async def delete_by_doc_id(self, doc_id: str) -> int:
-        """Delete only legacy vectors for a legacy parser document ID."""
+        """Maintenance-only cleanup for pre-S3 legacy parser IDs.
+
+        Formal document deletion must use ``DocumentUpdateCoordinator`` and
+        ``delete_document``. No API, Coordinator, or future CDC adapter may
+        use this path because it lacks registry/version Saga semantics.
+        """
         if self._backend == "chroma":
             existing = self._store.get(where={"doc_id": str(doc_id)}, include=[])
             ids = existing.get("ids", [])

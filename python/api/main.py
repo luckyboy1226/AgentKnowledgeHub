@@ -23,7 +23,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -179,26 +179,6 @@ class StatsResponse(BaseModel):  # 统计响应模型
     """统计响应模型"""
     vector_store: dict[str, Any]
     knowledge_graph: dict[str, Any]
-
-
-class UpdateRequest(BaseModel):  # 更新请求模型
-    """Reserved for the future versioned document update API.
-
-    Local paths are intentionally not accepted: a future update must upload
-    its bytes with ``PUT /api/documents/{document_id}``.
-    """
-    document_id: str
-
-
-class UpdateResponse(BaseModel):  # 更新响应模型
-    """更新响应模型"""
-    file_path: str
-    vectors_added: int
-    vectors_deleted: int
-    entities_added: int
-    relations_added: int
-    success: bool
-    processing_time_ms: float
 
 
 # ── Versioned document endpoints ─────────────────────────────
@@ -430,20 +410,14 @@ async def get_documents():
 
 @app.delete("/api/ingest/documents/{file_name}", tags=["文档入库"])
 async def delete_document(file_name: str):
-    """Legacy file cleanup endpoint; versioned UI calls /api/documents/{id}."""
+    """Reject filename-based deletes; versioned deletion needs a document UUID."""
     safe_name = Path(file_name).name
-    upload_root = Path(settings.upload_dir).resolve()
-    filepath = (upload_root / safe_name).resolve()
-    if safe_name != file_name or upload_root not in filepath.parents:
+    if safe_name != file_name:
         raise HTTPException(status_code=400, detail="Invalid file name")
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    try:
-        filepath.unlink()
-        return {"success": True, "message": f"Document {safe_name} deleted"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+    raise HTTPException(
+        status_code=410,
+        detail="Filename-based deletion is retired; use DELETE /api/documents/{document_id}.",
+    )
 
 
 # ── QA Endpoints ─────────────────────────────────────────────
@@ -508,13 +482,13 @@ async def get_stats():
     return StatsResponse(vector_store=vs_stats, knowledge_graph=kg_stats)
 
 
-@app.post("/api/admin/update", response_model=UpdateResponse, tags=["系统管理"])
-async def trigger_update(req: UpdateRequest):
-    """Disable the legacy local-path update endpoint until S3 is transactional."""
-    del req
+@app.post("/api/admin/update", tags=["系统管理"])
+async def trigger_update(payload: dict[str, Any] | None = Body(default=None)):
+    """Retire the local-path admin update route without inspecting its payload."""
+    del payload
     raise HTTPException(
-        status_code=501,
-        detail="Use the future multipart document update API; local file paths are not accepted.",
+        status_code=410,
+        detail="Legacy admin updates are retired; use POST or PUT /api/documents with multipart bytes.",
     )
 
 

@@ -259,6 +259,24 @@ def test_legacy_upload_url_is_a_compatibility_alias(client):
     assert response.status_code == 200 and coordinator.calls[0][0] == "create"
 
 
+def test_legacy_admin_update_rejects_file_paths_without_coordinator_call(client):
+    http, _, coordinator = client
+    response = http.post("/api/admin/update", json={"file_path": r"C:\\sensitive\\report.pdf"})
+
+    assert response.status_code == 410
+    assert "/api/documents" in response.json()["detail"]
+    assert not coordinator.calls
+
+
+def test_legacy_filename_delete_is_retired_without_coordinator_call(client):
+    http, _, coordinator = client
+    response = http.delete("/api/ingest/documents/report.txt")
+
+    assert response.status_code == 410
+    assert "/api/documents" in response.json()["detail"]
+    assert not coordinator.calls
+
+
 def test_legacy_batch_uses_plain_default_identity_values(client):
     http, _, coordinator = client
     response = http.post(
