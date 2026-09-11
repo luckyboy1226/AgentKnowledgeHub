@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from agents.knowledge_extract_agent import Entity, Relation
 from config import settings
-
-
-RELATION_TYPE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+from services.relation_semantics import (
+    RELATION_SEMANTICS_VERSION,
+    canonicalize_relation,
+    is_canonical_predicate,
+)
 
 
 class KnowledgeGraphService:
@@ -67,9 +68,8 @@ class KnowledgeGraphService:
 
     @staticmethod
     def safe_relationship_type(predicate: str) -> str:
-        """Allow only a bounded Cypher relationship identifier, never user text."""
-        candidate = re.sub(r"\s+", "_", str(predicate).strip().upper())
-        return candidate if RELATION_TYPE_RE.fullmatch(candidate) else "RELATED_TO"
+        """Return a reviewed relationship identifier, never arbitrary user text."""
+        return canonicalize_relation(predicate).predicate
 
     @staticmethod
     def safe_source(source: str | Path) -> str:
@@ -118,12 +118,17 @@ class KnowledgeGraphService:
 
     async def add_relation(self, relation: Relation, source: str = "") -> None:
         """Create a legacy business relationship with a validated type identifier."""
-        relationship_type = self.safe_relationship_type(relation.relation)
+        semantic = canonicalize_relation(
+            relation.relation, raw_predicate=(relation.properties or {}).get("raw_predicate", relation.relation)
+        )
+        relationship_type = semantic.predicate
         cypher = f"""
         MATCH (h:Entity {{name: $head}})
         MATCH (t:Entity {{name: $tail}})
         MERGE (h)-[r:{relationship_type}]->(t)
-        SET r.confidence = $confidence, r.source = $source, r.updated_at = $now
+        SET r.confidence = $confidence, r.source = $source, r.predicate = $predicate,
+          r.raw_predicate = $raw_predicate, r.relation_semantics_version = $relation_semantics_version,
+          r.updated_at = $now
         """
         async with self._driver.session() as session:
             await session.run(
@@ -133,6 +138,9 @@ class KnowledgeGraphService:
                     "tail": relation.tail,
                     "confidence": relation.confidence,
                     "source": self.safe_source(source),
+                    "predicate": semantic.predicate,
+                    "raw_predicate": semantic.raw_predicate,
+                    "relation_semantics_version": semantic.semantics_version,
                     "now": int(time.time()),
                 },
             )
@@ -197,8 +205,13 @@ class KnowledgeGraphService:
             await self._merge_entity_and_mention(tx, key, relation.head, "Unknown", "", now)
             await self._merge_entity_and_mention(tx, key, relation.tail, "Unknown", "", now)
             mentioned.update((relation.head, relation.tail))
-            predicate = str(relation.relation)
-            relationship_type = self.safe_relationship_type(predicate)
+            semantic = canonicalize_relation(
+                relation.relation,
+                raw_predicate=(relation.properties or {}).get("raw_predicate", relation.relation),
+            )
+            predicate = semantic.predicate
+            raw_predicate = semantic.raw_predicate
+            relationship_type = predicate
             evidence_key = self.evidence_key(
                 document_id, version, relation.head, predicate, relation.tail
             )
@@ -208,7 +221,9 @@ class KnowledgeGraphService:
                 MATCH (t:Entity {{name: $tail}})
                 MERGE (h)-[r:{relationship_type} {{evidence_key: $evidence_key}}]->(t)
                 ON CREATE SET r.document_id = $document_id, r.document_version = $version,
-                  r.predicate = $predicate, r.confidence = $confidence, r.source = $source,
+                  r.predicate = $predicate, r.raw_predicate = $raw_predicate,
+                  r.relation_semantics_version = $relation_semantics_version,
+                  r.confidence = $confidence, r.source = $source,
                   r.status = 'processing', r.is_current = false, r.created_at = $now, r.updated_at = $now
                 ON MATCH SET r.updated_at = $now
                 """,
@@ -218,6 +233,8 @@ class KnowledgeGraphService:
                 document_id=document_id,
                 version=version,
                 predicate=predicate,
+                raw_predicate=raw_predicate,
+                relation_semantics_version=semantic.semantics_version,
                 confidence=relation.confidence,
                 source=source,
                 now=now,
@@ -405,7 +422,10 @@ class KnowledgeGraphService:
             """
             MATCH (head:Entity)-[r]->(tail:Entity)
             WHERE r.document_id = $document_id AND r.document_version = $version
-            RETURN r.evidence_key AS evidence_key, head.name AS head, type(r) AS predicate,
+            RETURN r.evidence_key AS evidence_key, head.name AS head,
+              coalesce(r.predicate, type(r)) AS predicate,
+              coalesce(r.raw_predicate, r.predicate, type(r)) AS raw_predicate,
+              r.relation_semantics_version AS relation_semantics_version,
               tail.name AS tail, r.source AS source, r.status AS status, r.is_current AS is_current
             ORDER BY r.evidence_key
             """,
@@ -444,6 +464,8 @@ class KnowledgeGraphService:
                 "subject", "predicate", "object", "direction", "document_id", "source", "evidence_key",
             )):
                 return False
+            if not is_canonical_predicate(edge.get("predicate")):
+                return False
             if edge.get("direction") not in {"forward", "reverse"}:
                 return False
             if str(edge.get("document_id")) not in allowed_document_ids:
@@ -477,6 +499,7 @@ class KnowledgeGraphService:
                 "name": entity_name,
                 "limit": 50,
                 "allowed_document_ids": sorted(allowed_document_ids),
+                "relation_semantics_version": RELATION_SEMANTICS_VERSION,
             }
         if allowed_document_ids is None:
             cypher = f"""
@@ -506,6 +529,8 @@ class KnowledgeGraphService:
                   THEN {{
                     subject: path_nodes[index].name,
                     predicate: coalesce(rels[index].predicate, type(rels[index])),
+                    raw_predicate: coalesce(rels[index].raw_predicate, rels[index].predicate, type(rels[index])),
+                    relation_semantics_version: coalesce(rels[index].relation_semantics_version, $relation_semantics_version),
                     object: path_nodes[index + 1].name,
                     direction: 'forward',
                     document_id: rels[index].document_id,
@@ -516,6 +541,8 @@ class KnowledgeGraphService:
                   ELSE {{
                     subject: path_nodes[index + 1].name,
                     predicate: coalesce(rels[index].predicate, type(rels[index])),
+                    raw_predicate: coalesce(rels[index].raw_predicate, rels[index].predicate, type(rels[index])),
+                    relation_semantics_version: coalesce(rels[index].relation_semantics_version, $relation_semantics_version),
                     object: path_nodes[index].name,
                     direction: 'reverse',
                     document_id: rels[index].document_id,

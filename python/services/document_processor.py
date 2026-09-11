@@ -310,13 +310,21 @@ class DocumentProcessorAdapter:
             head, tail = str(relation.head or "").strip(), str(relation.tail or "").strip()
             if not head or not tail or head not in entity_names or tail not in entity_names:
                 raise InvalidExtractionResult("Relation endpoint is missing from entities")
-            # Keep the graph service's established relation identifier policy.
-            from services.knowledge_graph import KnowledgeGraphService
+            # Keep raw extraction evidence while mapping only reviewed aliases
+            # to a canonical relationship.  Unknown labels are intentionally
+            # non-specific rather than becoming arbitrary graph types.
+            from services.relation_semantics import canonicalize_relation
 
-            predicate = KnowledgeGraphService.safe_relationship_type(str(relation.relation or ""))
             properties = _json_safe(relation.properties or {})
             if not isinstance(properties, dict):
                 raise InvalidExtractionResult("Relation properties must be an object")
+            semantic = canonicalize_relation(
+                relation.relation, raw_predicate=properties.get("raw_predicate", relation.relation)
+            )
+            predicate = semantic.predicate
+            properties["raw_predicate"] = semantic.raw_predicate
+            properties["canonical_predicate"] = predicate
+            properties["relation_semantics_version"] = semantic.semantics_version
             property_key = json.dumps(properties, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             key = (head, predicate, tail, property_key)
             if key not in relations_by_key:

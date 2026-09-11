@@ -17,6 +17,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from agents.qa_agent import EvaluationQueryPlan, QAAgent, RetrievalMode
 from services.evaluation_scope import EvaluationScope, require_verified_scope
+from services.relation_semantics import RELATION_SEMANTICS_VERSION, canonical_predicate, is_canonical_predicate
 
 
 _ABSOLUTE_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|[\\/]{1,2})")
@@ -414,7 +415,10 @@ def score_relation_fidelity(case: EvaluationCase, contexts: Iterable[Any]) -> di
     may be fluent while its evidence contains a different predicate, such as
     ``DEPENDS_ON`` instead of ``PROVIDES_INDEX_TO``.
     """
-    expected = set(case.expected_relation_path)
+    expected = {
+        (subject, canonical_predicate(predicate), object_, direction)
+        for subject, predicate, object_, direction in case.expected_relation_path
+    }
     observed: set[tuple[str, str, str, str]] = set()
     for context in contexts:
         if getattr(context, "retrieval_type", "") != "graph":
@@ -424,9 +428,9 @@ def score_relation_fidelity(case: EvaluationCase, contexts: Iterable[Any]) -> di
             if not isinstance(edge, dict):
                 continue
             direction = str(edge.get("direction", "")).strip()
-            values = tuple(str(edge.get(field, "")).strip() for field in ("subject", "predicate", "object"))
-            if all(values) and direction in {"forward", "reverse"}:
-                observed.add((*values, direction))
+            subject, predicate, object_ = (str(edge.get(field, "")).strip() for field in ("subject", "predicate", "object"))
+            if subject and predicate and object_ and direction in {"forward", "reverse"}:
+                observed.add((subject, canonical_predicate(predicate), object_, direction))
     matched = expected & observed
     return {
         "expected_relation_total": len(expected),
@@ -435,6 +439,77 @@ def score_relation_fidelity(case: EvaluationCase, contexts: Iterable[Any]) -> di
         "relation_fidelity_pass": bool(expected) and matched == expected,
         "expected_relations": sorted("|".join(edge) for edge in expected),
         "matched_relations": sorted("|".join(edge) for edge in matched),
+    }
+
+
+def graph_evidence_diagnostics(
+    case: EvaluationCase, contexts: Iterable[Any]
+) -> dict[str, Any]:
+    """Return safe graph edges that actually enter an evaluation prompt.
+
+    This is forward-looking diagnostics only: it never reconstructs or mutates
+    historical prompts. A conflict records multiple predicates on one directed
+    pair; it does not infer that either predicate is false.
+    """
+    edges: list[dict[str, Any]] = []
+    violations: list[dict[str, str]] = []
+    for context in contexts:
+        if getattr(context, "retrieval_type", "") != "graph":
+            continue
+        metadata = getattr(context, "metadata", {}) or {}
+        for raw in metadata.get("graph_evidence", []):
+            if not isinstance(raw, dict):
+                continue
+            edge = {
+                "subject": " ".join(str(raw.get("subject", "")).split()),
+                "predicate": " ".join(str(raw.get("predicate", "")).split()),
+                "object": " ".join(str(raw.get("object", "")).split()),
+                "direction": " ".join(str(raw.get("direction", "")).split()),
+                "document_id": " ".join(str(raw.get("document_id", "")).split()),
+                "document_version": raw.get("document_version"),
+                "source": safe_source(raw.get("source", "")),
+                "evidence_key": " ".join(str(raw.get("evidence_key", "")).split()),
+                "raw_predicate": " ".join(str(raw.get("raw_predicate", raw.get("predicate", ""))).split())[:160],
+                "relation_semantics_version": " ".join(
+                    str(raw.get("relation_semantics_version", "legacy-unversioned")).split()
+                ),
+            }
+            if not all(str(edge[field]).strip() for field in ("subject", "predicate", "object", "direction", "document_id", "source", "evidence_key")):
+                violations.append({"type": "incomplete_edge", "evidence_key": edge["evidence_key"]})
+                continue
+            if edge["direction"] not in {"forward", "reverse"}:
+                violations.append({"type": "invalid_direction", "evidence_key": edge["evidence_key"]})
+                continue
+            if not is_canonical_predicate(edge["predicate"]):
+                violations.append({"type": "noncanonical_predicate", "evidence_key": edge["evidence_key"]})
+            edges.append(edge)
+    edges.sort(key=lambda edge: (edge["document_id"], int(edge["document_version"] or 0), edge["evidence_key"]))
+    predicates = sorted({edge["predicate"] for edge in edges})
+    directed_predicates: dict[tuple[str, str, str], set[str]] = {}
+    for edge in edges:
+        directed_predicates.setdefault((edge["subject"], edge["object"], edge["direction"]), set()).add(edge["predicate"])
+    conflicts = [
+        {"subject": subject, "object": object_, "direction": direction, "predicates": sorted(predicates)}
+        for (subject, object_, direction), predicates in sorted(directed_predicates.items())
+        if len(predicates) > 1
+    ]
+    expected = {
+        (subject, canonical_predicate(predicate), object_, direction)
+        for subject, predicate, object_, direction in case.expected_relation_path
+    }
+    observed = {
+        (edge["subject"], canonical_predicate(edge["predicate"]), edge["object"], edge["direction"])
+        for edge in edges
+    }
+    for relation in sorted(expected - observed):
+        violations.append({"type": "expected_relation_not_in_prompt", "relation": "|".join(relation)})
+    return {
+        "graph_evidence_edges": edges,
+        "graph_predicates_used": predicates,
+        "relation_fidelity_violations": violations,
+        "relation_conflict_detected": bool(conflicts),
+        "relation_conflicts": conflicts,
+        "relation_semantics_version": RELATION_SEMANTICS_VERSION,
     }
 
 
@@ -595,6 +670,7 @@ class RAGEvaluationRunner:
                 case, answer=result.answer, sources=sources, mode=mode, graph_context_count=graph_count
             )
             relation_fidelity = score_relation_fidelity(case, result.contexts)
+            evidence_diagnostics = graph_evidence_diagnostics(case, result.contexts)
             return {
                 "run_id": plan.run_id,
                 "mode": mode.value,
@@ -617,6 +693,7 @@ class RAGEvaluationRunner:
                 "deterministic_score": score,
                 "deterministic_score_v2": score_v2,
                 "relation_fidelity": relation_fidelity,
+                **evidence_diagnostics,
                 "forbidden_fact_violation": bool(score["forbidden_keyword_hits"]),
                 "failure_summary": None,
             }
@@ -632,6 +709,9 @@ class RAGEvaluationRunner:
                 "model_call_counts": self._call_counts(plan_before, plan_after, chat_before, vector_before, embedding_before, graph_before),
                 "deterministic_score": None, "deterministic_score_v2": None,
                 "relation_fidelity": None, "forbidden_fact_violation": None,
+                "graph_evidence_edges": [], "graph_predicates_used": [],
+                "relation_fidelity_violations": [], "relation_conflict_detected": False,
+                "relation_conflicts": [], "relation_semantics_version": RELATION_SEMANTICS_VERSION,
                 "failure_summary": type(exc).__name__,
             }
 
@@ -735,7 +815,9 @@ class RAGEvaluationRunner:
             "run_id", "mode", "question_id", "category", "success", "http_status", "latency_ms",
             "answer", "sources", "vector_context_count", "graph_context_count", "allowed_document_ids_count",
             "vector_scope_rejected_count", "graph_scope_rejected_count", "scope_verified", "model_call_counts",
-            "deterministic_score", "deterministic_score_v2", "relation_fidelity", "forbidden_fact_violation", "failure_summary",
+            "deterministic_score", "deterministic_score_v2", "relation_fidelity", "graph_evidence_edges",
+            "graph_predicates_used", "relation_fidelity_violations", "relation_conflict_detected",
+            "relation_conflicts", "relation_semantics_version", "forbidden_fact_violation", "failure_summary",
         ]
         temporary = output_dir / "results.csv.tmp"
         with temporary.open("w", newline="", encoding="utf-8") as stream:
@@ -743,7 +825,7 @@ class RAGEvaluationRunner:
             writer.writeheader()
             for result in payload["results"]:
                 row = dict(result)
-                for name in ("sources", "model_call_counts", "deterministic_score", "deterministic_score_v2", "relation_fidelity"):
+                for name in ("sources", "model_call_counts", "deterministic_score", "deterministic_score_v2", "relation_fidelity", "graph_evidence_edges", "graph_predicates_used", "relation_fidelity_violations", "relation_conflicts"):
                     row[name] = json.dumps(row[name], ensure_ascii=False, sort_keys=True)
                 writer.writerow(row)
         os.replace(temporary, output_dir / "results.csv")

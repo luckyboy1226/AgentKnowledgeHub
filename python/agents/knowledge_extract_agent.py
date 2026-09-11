@@ -30,7 +30,7 @@ EXTRACTION_SYSTEM_PROMPT = """\
     {"name": "实体名", "type": "实体类型", "description": "简短描述"}
   ],
   "relations": [
-    {"head": "头实体", "relation": "关系类型", "tail": "尾实体", "confidence": 0.95}
+    {"head": "头实体", "relation": "关系类型", "raw_predicate": "原文关系短语", "tail": "尾实体", "confidence": 0.95}
   ],
   "events": [
     {"trigger": "触发词", "type": "事件类型", "participants": ["参与者1"]}
@@ -39,7 +39,11 @@ EXTRACTION_SYSTEM_PROMPT = """\
 
 注意:
 - 实体类型包括: Person, Organization, Location, Product, Technology, Concept, Event, Time
-- 关系类型包括: belongs_to, works_at, located_in, developed_by, related_to, part_of, uses, depends_on
+- 关系必须保持方向：head 是施事/起点，tail 是受事/终点。
+- 使用明确关系：depends_on, provides_index, responsible_for, uses, works_at,
+  member_of, co_delivers, related_to。保留 raw_predicate 为原文短语。
+- “A 为 B 提供检索索引”只能写为 A -> provides_index -> B；不得改写为 depends_on。
+- 仅当原文明确写出依赖时才使用 depends_on；无法确定时使用 related_to，不得猜测。
 - confidence 为 0-1 之间的浮点数
 - 只返回 JSON，不要包含其他文字
 """
@@ -149,6 +153,7 @@ class KnowledgeExtractAgent:
                 relation=r.get("relation", "related_to"),
                 tail=r.get("tail", ""),
                 confidence=float(r.get("confidence", 0.5)),
+                properties={"raw_predicate": str(r.get("raw_predicate") or r.get("relation") or "")},
             )
             for r in data.get("relations", [])
             if r.get("head") and r.get("tail")

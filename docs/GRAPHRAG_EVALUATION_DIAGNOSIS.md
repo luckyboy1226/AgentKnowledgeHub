@@ -142,6 +142,22 @@ Q11、Q12 可以获得可解释的重评分，但 Q03/Q05 的关系混淆仍保�
 也最容易以 fake-only 测试锁定“不能把提供索引说成依赖”。随后再实施 B；否则调整权重会掩盖
 关系表达错误而不能解释其来源。
 
+## S4.4：关系抽取与建模可观测性技术债
+
+第二轮真实 run 的 Q05 中，vector-only 回答忠实陈述了“北极星为天枢提供检索索引”，而
+graph-rag 最终回答使用了 `DEPENDS_ON`。历史结果保存了 sources 和图谱 context 数量，但没有
+保存结构化 `evidence_edges` 或最终 prompt。因此，不能用该 run 断言错误最早发生在抽取、Neo4j
+写入、检索或生成中的哪一层；该历史根因分类为 **`insufficient_evidence`**，不是对任一层的
+确定性归责。
+
+S4.4 为后续 run 建立可审计的最小契约：关系必须有有向 `subject/predicate/object`、`raw_predicate`、
+`document_id/document_version/source/evidence_key` 与 `relation_semantics_version`。有限别名表只将
+审核过的关系映射到规范 predicate；未知关系降级为 `RELATED_TO`。特别地，
+`PROVIDES_INDEX` 与 `DEPENDS_ON` 没有相互转换或推导规则。不可变 enterprise fixture 的历史
+`PROVIDES_INDEX_TO` 拼写只在评分读取时等价规范化。未来评测结果会仅保存真正进入 scoped
+prompt 的安全 edge、使用的 predicates、关系保真缺失和同一有向端点的 predicate 冲突；不会反向修改
+历史 run。
+
 ### S4.2b 实施状态
 
 已实施 A+C 的 scoped-evaluation 最小版本：Neo4j scoped reads 返回逐边 provenance，QA 只将

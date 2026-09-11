@@ -147,10 +147,25 @@ async def test_evidence_properties_include_document_and_version(graph):
     assert any(item.get("document_id") == "doc-a" and item.get("version") == 2 for item in stage_params)
 
 
+@pytest.mark.asyncio
+async def test_stage_stores_canonical_and_raw_predicate_without_reversing_endpoints(graph):
+    relation = Relation("北极星", "提供检索索引", "天枢", 0.9)
+    await graph.stage_document_version("doc-a", 1, "hash", "safe.txt", [], [relation])
+    assert any(
+        item.get("predicate") == "PROVIDES_INDEX"
+        and item.get("raw_predicate") == "提供检索索引"
+        and item.get("head") == "北极星"
+        and item.get("tail") == "天枢"
+        for item in params(graph)
+    )
+    assert "r.raw_predicate = $raw_predicate" in queries(graph)
+
+
 def test_dynamic_relationship_type_is_validated():
-    assert KnowledgeGraphService.safe_relationship_type("owns project") == "OWNS_PROJECT"
+    assert KnowledgeGraphService.safe_relationship_type("owns project") == "RELATED_TO"
     assert KnowledgeGraphService.safe_relationship_type("x`]->[:PWNED") == "RELATED_TO"
     assert KnowledgeGraphService.safe_relationship_type("中文关系") == "RELATED_TO"
+    assert KnowledgeGraphService.safe_relationship_type("provides index to") == "PROVIDES_INDEX"
 
 
 @pytest.mark.asyncio
@@ -241,6 +256,7 @@ async def test_list_evidence_returns_safe_provenance_shape(graph):
     records = await graph.list_document_evidence("doc-a", 1)
     assert records[0]["evidence_key"] == "k"
     assert "r.evidence_key AS evidence_key" in queries(graph)
+    assert "coalesce(r.raw_predicate, r.predicate, type(r)) AS raw_predicate" in queries(graph)
 
 
 @pytest.mark.asyncio
@@ -339,3 +355,11 @@ async def test_legacy_add_relation_uses_safe_type_and_safe_source(graph):
     await graph.add_relation(Relation("Alice", "bad` type", "Project", 1.0), r"C:\uploads\a.txt")
     assert "RELATED_TO" in queries(graph)
     assert any(item.get("source") == "a.txt" for item in params(graph))
+
+
+@pytest.mark.asyncio
+async def test_scoped_neighbor_query_returns_raw_predicate_and_semantics_version(graph):
+    await graph.get_neighbors("Alice", allowed_document_ids=frozenset({"doc-a"}))
+    text = queries(graph)
+    assert "raw_predicate: coalesce(rels[index].raw_predicate" in text
+    assert "relation_semantics_version: coalesce(rels[index].relation_semantics_version" in text

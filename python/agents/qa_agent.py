@@ -23,6 +23,7 @@ from config import settings
 from providers.chat import ChatProvider
 from services.evaluation_scope import EvaluationScope, require_verified_scope
 from services.memory_models import MemoryEvent, Personality, UserProfile
+from services.relation_semantics import canonicalize_relation, is_canonical_predicate
 
 
 class QueryIntent(str, Enum):
@@ -111,6 +112,9 @@ ANSWER_PROMPT = """\
 3. 引用信息来源（如 [来源: xxx]）
 4. 如果涉及多个信息源，综合分析后给出结论
 5. 保持专业、准确、简洁
+6. 图谱证据中的关系方向和谓词是原始事实：只能按 ``主体 --关系--> 客体`` 陈述。
+   不得把 ``PROVIDES_INDEX`` 改写、推导或泛化为 ``DEPENDS_ON``，也不得反向关系。
+7. 图谱没有直接证据时，明确说明不能从现有资料推断该关系。
 """
 
 MEMORY_ANSWER_PROMPT = """\
@@ -503,15 +507,26 @@ class QAAgent:
             values = {field: " ".join(str(raw.get(field, "")).split()) for field in (
                 "subject", "predicate", "object", "direction", "document_id", "source", "evidence_key",
             )}
+            semantic = canonicalize_relation(values["predicate"], raw_predicate=raw.get("raw_predicate", values["predicate"]))
+            values["predicate"] = semantic.predicate
             values["source"] = values["source"].replace("\\", "/").rsplit("/", 1)[-1]
             if not all(values.values()) or values["direction"] not in {"forward", "reverse"}:
+                return None
+            if not is_canonical_predicate(values["predicate"]):
                 return None
             if values["document_id"] not in allowed_document_ids:
                 return None
             version = raw.get("document_version")
             if not isinstance(version, int) or isinstance(version, bool) or version < 1:
                 return None
-            normalized.append({**values, "document_version": version})
+            raw_predicate = semantic.raw_predicate
+            semantics_version = " ".join(str(raw.get("relation_semantics_version", "")).split())
+            normalized.append({
+                **values,
+                "document_version": version,
+                "raw_predicate": raw_predicate[:160] or values["predicate"],
+                "relation_semantics_version": semantics_version or "legacy-unversioned",
+            })
         return normalized
 
     @staticmethod
@@ -522,7 +537,7 @@ class QAAgent:
             lines.append(
                 f"{edge['subject']} --{edge['predicate']}--> {edge['object']} "
                 f"[方向: {edge['direction']}; 来源: {edge['source']}, v{edge['document_version']}; "
-                f"evidence: {edge['evidence_key']}]"
+                f"原始关系: {edge.get('raw_predicate', edge['predicate'])}; evidence: {edge['evidence_key']}]"
             )
         return "\n".join(lines)
 

@@ -195,7 +195,19 @@ fixture 的文档数和题目数完全由 JSON 驱动；runner 不假定 4 份�
 `correct / N` 和 accuracy，并报告 required-fact hit、source coverage、abstention accuracy、
 directed relation fidelity、forbidden-fact violation、graph participation、graph evidence 进入最终
 Top-K、平均/P50/P95 耗时，以及 Chat、Embedding、Neo4j 的逻辑调用数。关系保真独立于回答评分：
-`北极星 --PROVIDES_INDEX_TO--> 天枢` 不会因谓词不同的 `DEPENDS_ON` 被判为匹配。
+`北极星 --PROVIDES_INDEX--> 天枢` 不会因谓词不同的 `DEPENDS_ON` 被判为匹配。
+
+### 关系语义与未来诊断（S4.4）
+
+新的文档版本图谱 evidence 保存 canonical `predicate` 和原始 `raw_predicate`，并带
+`relation_semantics_version`。canonicalizer 是有限审核词表：它保留方向，不做跨 predicate 推导，
+未知或不安全关系一律降级为 `RELATED_TO`。因此“提供检索索引”规范为
+`PROVIDES_INDEX`，绝不会被建模为 `DEPENDS_ON`。不可变 enterprise fixture 中的历史拼写
+`PROVIDES_INDEX_TO` 只在评分读取时等价规范化，fixture 本身不会被修改。
+
+未来 scoped 评测报告会包含真正进入最终 prompt 的安全 `graph_evidence_edges`、
+`graph_predicates_used`、`relation_fidelity_violations` 与 `relation_conflict_detected`。这些字段用于
+定位下一次实验的抽取、存储、检索或生成问题；它们不会被回填到不可变的历史真实评测目录。
 
 `--offline` 仅使用 fake provider/store/graph，输出仍写入被忽略的
 `.runtime/evaluation/<run_id>/`。真实模式仍需要单独授权、实际上传得到的 UUID allowlist，且清理
