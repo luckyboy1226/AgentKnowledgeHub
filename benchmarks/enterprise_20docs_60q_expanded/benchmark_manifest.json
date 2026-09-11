@@ -1,0 +1,28 @@
+{
+  "benchmark_name": "AgentKnowledgeHub Enterprise GraphRAG Benchmark",
+  "version": "1.0",
+  "documents": 20,
+  "questions": 60,
+  "question_categories": {
+    "single_hop": 12,
+    "multi_hop": 12,
+    "constraint": 12,
+    "distractor": 12,
+    "abstention": 12
+  },
+  "files": {
+    "documents_json": "benchmark_documents.json",
+    "questions_json": "benchmark_questions.json",
+    "document_text_dir": "documents/"
+  },
+  "recommended_execution": {
+    "comparison": [
+      "vector_only",
+      "graph_rag"
+    ],
+    "shared_query_plan": true,
+    "memory_service": null,
+    "scope_fail_closed": true,
+    "cleanup_by_document_id_only": true
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "document_count": 20,
+  "question_count": 60,
+  "question_fixture_sha256": "814d144cc05b4fa622ab3f68b953089354d489bd40b143e17cd6c1f1b8dc83cb",
+  "document_content_only_expanded": true,
+  "document_metadata_unchanged": true,
+  "question_fixture_byte_for_byte_unchanged": true,
+  "current_chunking_assumption": {
+    "chunk_size": 512,
+    "chunk_overlap": 64
+  },
+  "documents": [
+    {
+      "id": "D01",
+      "filename": "D01_group_organization.txt",
+      "characters": 1064,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D02",
+      "filename": "D02_data_platform_team.txt",
+      "characters": 1029,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D03",
+      "filename": "D03_application_architecture_team.txt",
+      "characters": 1029,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D04",
+      "filename": "D04_intelligent_product_team.txt",
+      "characters": 1037,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D05",
+      "filename": "D05_security_operations_team.txt",
+      "characters": 1018,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D06",
+      "filename": "D06_customer_success_team.txt",
+      "characters": 1001,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D07",
+      "filename": "D07_northstar_retrieval_project.txt",
+      "characters": 1016,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D08",
+      "filename": "D08_atlas_event_service.txt",
+      "characters": 1039,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D09",
+      "filename": "D09_tianshu_knowledge_platform.txt",
+      "characters": 1005,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D10",
+      "filename": "D10_tianshu_northstar_collaboration.txt",
+      "characters": 1016,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D11",
+      "filename": "D11_orion_authorization_service.txt",
+      "characters": 1016,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D12",
+      "filename": "D12_dawn_customer_portal.txt",
+      "characters": 1027,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D13",
+      "filename": "D13_starmap_recommendation_engine.txt",
+      "characters": 1010,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D14",
+      "filename": "D14_hetu_data_lake.txt",
+      "characters": 1031,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D15",
+      "filename": "D15_morningstar_reporting_system.txt",
+      "characters": 1023,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D16",
+      "filename": "D16_liuguang_observability_platform.txt",
+      "characters": 1017,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D17",
+      "filename": "D17_cloudbridge_api_gateway.txt",
+      "characters": 1005,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D18",
+      "filename": "D18_incident_2026_07_18.txt",
+      "characters": 1024,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D19",
+      "filename": "D19_q3_technology_roadmap.txt",
+      "characters": 1001,
+      "estimated_chunks": 3
+    },
+    {
+      "id": "D20",
+      "filename": "D20_huayuan_energy_deployment.txt",
+      "characters": 992,
+      "estimated_chunks": 3
+    }
+  ],
+  "total_estimated_chunks": 60
+}
