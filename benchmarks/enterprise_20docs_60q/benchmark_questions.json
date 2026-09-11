@@ -1,0 +1,2108 @@
+{
+  "benchmark_name": "AgentKnowledgeHub Enterprise GraphRAG Benchmark",
+  "version": "1.0",
+  "question_count": 60,
+  "category_distribution": {
+    "single_hop": 12,
+    "multi_hop": 12,
+    "constraint": 12,
+    "distractor": 12,
+    "abstention": 12
+  },
+  "scoring_notes": {
+    "primary": "deterministic fixture",
+    "separate_dimensions": [
+      "answer_semantic_score",
+      "source_coverage_score",
+      "abstention_score",
+      "relation_fidelity_score",
+      "citation_behavior",
+      "forbidden_fact_violation"
+    ],
+    "llm_as_judge": "not_primary"
+  },
+  "questions": [
+    {
+      "question_id": "Q01",
+      "category": "single_hop",
+      "question": "陈航属于哪个部门，担任什么职位？",
+      "expected_answer": "陈航隶属数据平台部，担任数据工程师。",
+      "required_keywords": [
+        "数据平台部",
+        "数据工程师"
+      ],
+      "forbidden_keywords": [
+        "应用架构部成员"
+      ],
+      "expected_sources": [
+        "D02_data_platform_team.txt"
+      ],
+      "expected_entities": [
+        "陈航",
+        "数据平台部",
+        "数据工程师"
+      ],
+      "expected_relation_path": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部"
+        ],
+        [
+          "陈航",
+          "HAS_ROLE",
+          "数据工程师"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q02",
+      "category": "single_hop",
+      "question": "数据平台部负责人是谁？",
+      "expected_answer": "林岚。",
+      "required_keywords": [
+        "林岚"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D01_group_organization.txt"
+      ],
+      "expected_entities": [
+        "林岚",
+        "数据平台部"
+      ],
+      "expected_relation_path": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q03",
+      "category": "single_hop",
+      "question": "Atlas 事件服务由谁负责？",
+      "expected_answer": "赵启。",
+      "required_keywords": [
+        "赵启"
+      ],
+      "forbidden_keywords": [
+        "陈航负责Atlas"
+      ],
+      "expected_sources": [
+        "D08_atlas_event_service.txt"
+      ],
+      "expected_entities": [
+        "Atlas事件服务",
+        "赵启"
+      ],
+      "expected_relation_path": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q04",
+      "category": "single_hop",
+      "question": "北极星检索平台当前使用哪个向量数据库？",
+      "expected_answer": "Chroma。",
+      "required_keywords": [
+        "Chroma"
+      ],
+      "forbidden_keywords": [
+        "Milvus"
+      ],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "北极星检索平台",
+        "Chroma"
+      ],
+      "expected_relation_path": [
+        [
+          "北极星检索平台",
+          "USES",
+          "Chroma"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q05",
+      "category": "single_hop",
+      "question": "天枢知识平台使用哪两种核心存储技术？",
+      "expected_answer": "Neo4j 用于知识图谱关系，Chroma 用于文本向量。",
+      "required_keywords": [
+        "Neo4j",
+        "Chroma"
+      ],
+      "forbidden_keywords": [
+        "Milvus"
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "expected_entities": [
+        "天枢知识平台",
+        "Neo4j",
+        "Chroma"
+      ],
+      "expected_relation_path": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q06",
+      "category": "single_hop",
+      "question": "猎户座权限服务由谁负责？",
+      "expected_answer": "方屿。",
+      "required_keywords": [
+        "方屿"
+      ],
+      "forbidden_keywords": [
+        "赵启负责猎户座"
+      ],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "猎户座权限服务",
+        "方屿"
+      ],
+      "expected_relation_path": [
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q07",
+      "category": "single_hop",
+      "question": "晨星报表系统的项目负责人是谁？",
+      "expected_answer": "韩策。",
+      "required_keywords": [
+        "韩策"
+      ],
+      "forbidden_keywords": [
+        "周宁负责晨星"
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "expected_entities": [
+        "晨星报表系统",
+        "韩策"
+      ],
+      "expected_relation_path": [
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q08",
+      "category": "single_hop",
+      "question": "晨星报表系统使用哪两种数据技术？",
+      "expected_answer": "PostgreSQL 和 Elasticsearch。",
+      "required_keywords": [
+        "PostgreSQL",
+        "Elasticsearch"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "expected_entities": [
+        "晨星报表系统",
+        "PostgreSQL",
+        "Elasticsearch"
+      ],
+      "expected_relation_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q09",
+      "category": "single_hop",
+      "question": "星图推荐引擎当前在线向量检索使用什么？",
+      "expected_answer": "Milvus。",
+      "required_keywords": [
+        "Milvus"
+      ],
+      "forbidden_keywords": [
+        "当前使用Chroma"
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "expected_entities": [
+        "星图推荐引擎",
+        "Milvus"
+      ],
+      "expected_relation_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q10",
+      "category": "single_hop",
+      "question": "河图数据湖采用哪些核心数据技术？",
+      "expected_answer": "Spark、Iceberg 和 MinIO。",
+      "required_keywords": [
+        "Spark",
+        "Iceberg",
+        "MinIO"
+      ],
+      "forbidden_keywords": [
+        "Elasticsearch"
+      ],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "expected_entities": [
+        "河图数据湖",
+        "Spark",
+        "Iceberg",
+        "MinIO"
+      ],
+      "expected_relation_path": [
+        [
+          "河图数据湖",
+          "USES",
+          "Spark"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "Iceberg"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "MinIO"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q11",
+      "category": "single_hop",
+      "question": "流光监控平台使用什么监控与可视化工具？",
+      "expected_answer": "Prometheus 和 Grafana。",
+      "required_keywords": [
+        "Prometheus",
+        "Grafana"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt"
+      ],
+      "expected_entities": [
+        "流光监控平台",
+        "Prometheus",
+        "Grafana"
+      ],
+      "expected_relation_path": [
+        [
+          "流光监控平台",
+          "USES",
+          "Prometheus"
+        ],
+        [
+          "流光监控平台",
+          "USES",
+          "Grafana"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q12",
+      "category": "single_hop",
+      "question": "曙光客户门户由谁负责？",
+      "expected_answer": "苏澄。",
+      "required_keywords": [
+        "苏澄"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt"
+      ],
+      "expected_entities": [
+        "曙光客户门户",
+        "苏澄"
+      ],
+      "expected_relation_path": [
+        [
+          "苏澄",
+          "RESPONSIBLE_FOR",
+          "曙光客户门户"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q13",
+      "category": "multi_hop",
+      "question": "北极星检索平台依赖的事件服务由谁负责？",
+      "expected_answer": "北极星依赖 Atlas 事件服务，Atlas 由赵启负责。",
+      "required_keywords": [
+        "Atlas",
+        "赵启"
+      ],
+      "forbidden_keywords": [
+        "陈航负责Atlas"
+      ],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "expected_entities": [
+        "北极星检索平台",
+        "Atlas事件服务",
+        "赵启"
+      ],
+      "expected_relation_path": [
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q14",
+      "category": "multi_hop",
+      "question": "天枢知识平台依赖的权限服务由谁负责？",
+      "expected_answer": "天枢依赖猎户座权限服务，该服务由方屿负责。",
+      "required_keywords": [
+        "猎户座权限服务",
+        "方屿"
+      ],
+      "forbidden_keywords": [
+        "赵启负责猎户座"
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "天枢知识平台",
+        "猎户座权限服务",
+        "方屿"
+      ],
+      "expected_relation_path": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q15",
+      "category": "multi_hop",
+      "question": "曙光客户门户依赖的知识平台由哪两位共同负责人负责？",
+      "expected_answer": "曙光依赖天枢知识平台，天枢由林岚和赵启共同负责。",
+      "required_keywords": [
+        "天枢知识平台",
+        "林岚",
+        "赵启"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "expected_entities": [
+        "曙光客户门户",
+        "天枢知识平台",
+        "林岚",
+        "赵启"
+      ],
+      "expected_relation_path": [
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "天枢知识平台"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q16",
+      "category": "multi_hop",
+      "question": "华远能源使用的门户所依赖的权限服务由谁负责？",
+      "expected_answer": "华远能源使用曙光客户门户，门户依赖猎户座权限服务，猎户座由方屿负责。",
+      "required_keywords": [
+        "曙光客户门户",
+        "猎户座权限服务",
+        "方屿"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "华远能源",
+        "曙光客户门户",
+        "猎户座权限服务",
+        "方屿"
+      ],
+      "expected_relation_path": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q17",
+      "category": "multi_hop",
+      "question": "陈航负责的项目依赖的服务使用什么消息队列？",
+      "expected_answer": "陈航负责北极星，北极星依赖 Atlas，Atlas 使用 Kafka。",
+      "required_keywords": [
+        "北极星",
+        "Atlas",
+        "Kafka"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "expected_entities": [
+        "陈航",
+        "北极星检索平台",
+        "Atlas事件服务",
+        "Kafka"
+      ],
+      "expected_relation_path": [
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q18",
+      "category": "multi_hop",
+      "question": "沈舟负责的数据湖向哪个报表系统提供数据？",
+      "expected_answer": "沈舟负责河图数据湖，河图向晨星报表系统提供数据。",
+      "required_keywords": [
+        "河图数据湖",
+        "晨星报表系统"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "expected_entities": [
+        "沈舟",
+        "河图数据湖",
+        "晨星报表系统"
+      ],
+      "expected_relation_path": [
+        [
+          "沈舟",
+          "RESPONSIBLE_FOR",
+          "河图数据湖"
+        ],
+        [
+          "河图数据湖",
+          "PROVIDES_DATA_TO",
+          "晨星报表系统"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q19",
+      "category": "multi_hop",
+      "question": "星图推荐引擎负责人属于哪个部门？",
+      "expected_answer": "星图由唐悦负责，唐悦属于智能产品部。",
+      "required_keywords": [
+        "唐悦",
+        "智能产品部"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D04_intelligent_product_team.txt"
+      ],
+      "expected_entities": [
+        "星图推荐引擎",
+        "唐悦",
+        "智能产品部"
+      ],
+      "expected_relation_path": [
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎"
+        ],
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q20",
+      "category": "multi_hop",
+      "question": "云桥 API 网关负责人属于哪个部门？",
+      "expected_answer": "云桥由魏衡负责，魏衡属于应用架构部。",
+      "required_keywords": [
+        "魏衡",
+        "应用架构部"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D17_cloudbridge_api_gateway.txt",
+        "D03_application_architecture_team.txt"
+      ],
+      "expected_entities": [
+        "云桥API网关",
+        "魏衡",
+        "应用架构部"
+      ],
+      "expected_relation_path": [
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q21",
+      "category": "multi_hop",
+      "question": "天枢知识平台从哪个项目获得检索索引，该项目由谁负责？",
+      "expected_answer": "天枢从北极星检索平台获得检索索引，北极星由陈航负责。",
+      "required_keywords": [
+        "北极星",
+        "陈航"
+      ],
+      "forbidden_keywords": [
+        "北极星依赖天枢"
+      ],
+      "expected_sources": [
+        "D10_tianshu_northstar_collaboration.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "天枢知识平台",
+        "北极星检索平台",
+        "陈航"
+      ],
+      "expected_relation_path": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q22",
+      "category": "multi_hop",
+      "question": "E-2026-07-18 事件影响的检索平台由谁负责？",
+      "expected_answer": "事件影响北极星检索平台，北极星由陈航负责。",
+      "required_keywords": [
+        "北极星",
+        "陈航"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D18_incident_2026_07_18.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "E-2026-07-18",
+        "北极星检索平台",
+        "陈航"
+      ],
+      "expected_relation_path": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q23",
+      "category": "multi_hop",
+      "question": "华远能源使用的知识平台依赖哪个权限服务？",
+      "expected_answer": "华远能源通过曙光客户门户调用天枢知识平台，天枢依赖猎户座权限服务。",
+      "required_keywords": [
+        "天枢知识平台",
+        "猎户座权限服务"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "expected_entities": [
+        "华远能源",
+        "曙光客户门户",
+        "天枢知识平台",
+        "猎户座权限服务"
+      ],
+      "expected_relation_path": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台"
+        ],
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q24",
+      "category": "multi_hop",
+      "question": "流光监控的服务中，哪一个同时也是北极星检索平台的依赖？",
+      "expected_answer": "Atlas 事件服务。流光监控 Atlas，而北极星依赖 Atlas。",
+      "required_keywords": [
+        "Atlas"
+      ],
+      "forbidden_keywords": [
+        "猎户座"
+      ],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "流光监控平台",
+        "Atlas事件服务",
+        "北极星检索平台"
+      ],
+      "expected_relation_path": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q25",
+      "category": "constraint",
+      "question": "哪些人既是部门负责人，又是天枢知识平台的共同负责人？",
+      "expected_answer": "林岚和赵启。",
+      "required_keywords": [
+        "林岚",
+        "赵启"
+      ],
+      "forbidden_keywords": [
+        "顾然",
+        "周宁",
+        "叶青"
+      ],
+      "expected_sources": [
+        "D01_group_organization.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "expected_entities": [
+        "林岚",
+        "赵启",
+        "天枢知识平台"
+      ],
+      "expected_relation_path": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台"
+        ],
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q26",
+      "category": "constraint",
+      "question": "谁既属于安全运营部，又负责猎户座权限服务？",
+      "expected_answer": "方屿。",
+      "required_keywords": [
+        "方屿"
+      ],
+      "forbidden_keywords": [
+        "周宁"
+      ],
+      "expected_sources": [
+        "D05_security_operations_team.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "方屿",
+        "安全运营部",
+        "猎户座权限服务"
+      ],
+      "expected_relation_path": [
+        [
+          "方屿",
+          "MEMBER_OF",
+          "安全运营部"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q27",
+      "category": "constraint",
+      "question": "哪个项目同时使用 Neo4j 和 Chroma？",
+      "expected_answer": "天枢知识平台。",
+      "required_keywords": [
+        "天枢知识平台"
+      ],
+      "forbidden_keywords": [
+        "北极星"
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "expected_entities": [
+        "天枢知识平台",
+        "Neo4j",
+        "Chroma"
+      ],
+      "expected_relation_path": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q28",
+      "category": "constraint",
+      "question": "哪个服务同时使用 Redis 和 PostgreSQL，并为天枢知识平台提供鉴权？",
+      "expected_answer": "猎户座权限服务。",
+      "required_keywords": [
+        "猎户座权限服务",
+        "Redis",
+        "PostgreSQL"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "猎户座权限服务",
+        "Redis",
+        "PostgreSQL",
+        "天枢知识平台"
+      ],
+      "expected_relation_path": [
+        [
+          "猎户座权限服务",
+          "USES",
+          "Redis"
+        ],
+        [
+          "猎户座权限服务",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "猎户座权限服务",
+          "PROVIDES_AUTH_TO",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q29",
+      "category": "constraint",
+      "question": "谁既属于数据平台部，又负责北极星检索平台？",
+      "expected_answer": "陈航。",
+      "required_keywords": [
+        "陈航"
+      ],
+      "forbidden_keywords": [
+        "沈舟"
+      ],
+      "expected_sources": [
+        "D02_data_platform_team.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "陈航",
+        "数据平台部",
+        "北极星检索平台"
+      ],
+      "expected_relation_path": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q30",
+      "category": "constraint",
+      "question": "谁既属于智能产品部，又负责星图推荐引擎？",
+      "expected_answer": "唐悦。",
+      "required_keywords": [
+        "唐悦"
+      ],
+      "forbidden_keywords": [
+        "顾然"
+      ],
+      "expected_sources": [
+        "D04_intelligent_product_team.txt",
+        "D13_starmap_recommendation_engine.txt"
+      ],
+      "expected_entities": [
+        "唐悦",
+        "智能产品部",
+        "星图推荐引擎"
+      ],
+      "expected_relation_path": [
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部"
+        ],
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q31",
+      "category": "constraint",
+      "question": "哪个系统同时使用 PostgreSQL 和 Elasticsearch，而且负责人不是周宁？",
+      "expected_answer": "晨星报表系统，负责人是韩策；周宁只参与分析。",
+      "required_keywords": [
+        "晨星报表系统",
+        "韩策"
+      ],
+      "forbidden_keywords": [
+        "周宁负责晨星"
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "expected_entities": [
+        "晨星报表系统",
+        "韩策",
+        "周宁"
+      ],
+      "expected_relation_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch"
+        ],
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统"
+        ],
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "晨星报表系统"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q32",
+      "category": "constraint",
+      "question": "哪个项目当前使用 Milvus，同时在路线图中计划评估 Chroma？",
+      "expected_answer": "星图推荐引擎。",
+      "required_keywords": [
+        "星图推荐引擎",
+        "Milvus",
+        "Chroma"
+      ],
+      "forbidden_keywords": [
+        "已经切换Chroma"
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "expected_entities": [
+        "星图推荐引擎",
+        "Milvus",
+        "Chroma"
+      ],
+      "expected_relation_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q33",
+      "category": "constraint",
+      "question": "哪些项目都依赖猎户座权限服务？",
+      "expected_answer": "天枢知识平台和曙光客户门户。",
+      "required_keywords": [
+        "天枢知识平台",
+        "曙光客户门户"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt",
+        "D12_dawn_customer_portal.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "天枢知识平台",
+        "曙光客户门户",
+        "猎户座权限服务"
+      ],
+      "expected_relation_path": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q34",
+      "category": "constraint",
+      "question": "负责 Atlas 事件服务和云桥 API 网关的两个人属于同一个哪个部门？",
+      "expected_answer": "赵启和魏衡都属于应用架构部。",
+      "required_keywords": [
+        "赵启",
+        "魏衡",
+        "应用架构部"
+      ],
+      "forbidden_keywords": [],
+      "expected_sources": [
+        "D03_application_architecture_team.txt",
+        "D08_atlas_event_service.txt",
+        "D17_cloudbridge_api_gateway.txt"
+      ],
+      "expected_entities": [
+        "赵启",
+        "魏衡",
+        "应用架构部",
+        "Atlas事件服务",
+        "云桥API网关"
+      ],
+      "expected_relation_path": [
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部"
+        ],
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q35",
+      "category": "constraint",
+      "question": "哪个项目既受到 E-2026-07-18 事件影响，又向天枢知识平台提供检索索引？",
+      "expected_answer": "北极星检索平台。",
+      "required_keywords": [
+        "北极星检索平台"
+      ],
+      "forbidden_keywords": [
+        "Atlas事件服务"
+      ],
+      "expected_sources": [
+        "D18_incident_2026_07_18.txt",
+        "D10_tianshu_northstar_collaboration.txt"
+      ],
+      "expected_entities": [
+        "E-2026-07-18",
+        "北极星检索平台",
+        "天枢知识平台"
+      ],
+      "expected_relation_path": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台"
+        ],
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q36",
+      "category": "constraint",
+      "question": "华远能源的知识服务入口同时使用哪两个后端能力完成问答和认证？",
+      "expected_answer": "通过天枢知识平台完成问答，通过猎户座权限服务完成认证。",
+      "required_keywords": [
+        "天枢知识平台",
+        "猎户座权限服务"
+      ],
+      "forbidden_keywords": [
+        "北极星直接访问"
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt"
+      ],
+      "expected_entities": [
+        "华远能源",
+        "曙光客户门户",
+        "天枢知识平台",
+        "猎户座权限服务"
+      ],
+      "expected_relation_path": [
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台"
+        ],
+        [
+          "曙光客户门户",
+          "AUTHENTICATES_VIA",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q37",
+      "category": "distractor",
+      "question": "周宁是否负责北极星检索平台？如果不是，谁负责？",
+      "expected_answer": "不负责。北极星由陈航负责。",
+      "required_keywords": [
+        "不负责",
+        "陈航"
+      ],
+      "forbidden_keywords": [
+        "周宁负责北极星"
+      ],
+      "expected_sources": [
+        "D05_security_operations_team.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "expected_entities": [
+        "周宁",
+        "北极星检索平台",
+        "陈航"
+      ],
+      "expected_relation_path": [
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q38",
+      "category": "distractor",
+      "question": "晨星报表系统是否依赖北极星检索平台或天枢知识平台？",
+      "expected_answer": "不依赖两者。",
+      "required_keywords": [
+        "不依赖"
+      ],
+      "forbidden_keywords": [
+        "依赖北极星",
+        "依赖天枢"
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "expected_entities": [
+        "晨星报表系统",
+        "北极星检索平台",
+        "天枢知识平台"
+      ],
+      "expected_relation_path": [
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "北极星检索平台"
+        ],
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q39",
+      "category": "distractor",
+      "question": "星图推荐引擎是否已经切换到 Chroma？",
+      "expected_answer": "没有。当前仍使用 Milvus，只是在路线图中评估 Chroma。",
+      "required_keywords": [
+        "没有",
+        "Milvus",
+        "评估"
+      ],
+      "forbidden_keywords": [
+        "已经切换Chroma",
+        "当前使用Chroma"
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "expected_entities": [
+        "星图推荐引擎",
+        "Milvus",
+        "Chroma"
+      ],
+      "expected_relation_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_YET_MIGRATED_TO",
+          "Chroma"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q40",
+      "category": "distractor",
+      "question": "流光监控 Atlas 事件服务，是否意味着流光在业务上依赖 Atlas？",
+      "expected_answer": "不意味着。流光只监控 Atlas，文档明确说明监控关系不等于业务依赖。",
+      "required_keywords": [
+        "不",
+        "监控",
+        "不等于"
+      ],
+      "forbidden_keywords": [
+        "流光依赖Atlas"
+      ],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt"
+      ],
+      "expected_entities": [
+        "流光监控平台",
+        "Atlas事件服务"
+      ],
+      "expected_relation_path": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务"
+        ],
+        [
+          "流光监控平台",
+          "NOT_DEPENDS_ON",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q41",
+      "category": "distractor",
+      "question": "北极星为天枢提供检索索引，是否意味着北极星依赖天枢？",
+      "expected_answer": "不是。关系是北极星向天枢提供索引；北极星的上游依赖是 Atlas。",
+      "required_keywords": [
+        "不是",
+        "提供",
+        "Atlas"
+      ],
+      "forbidden_keywords": [
+        "北极星依赖天枢",
+        "DEPENDS_ON天枢"
+      ],
+      "expected_sources": [
+        "D10_tianshu_northstar_collaboration.txt"
+      ],
+      "expected_entities": [
+        "北极星检索平台",
+        "天枢知识平台",
+        "Atlas事件服务"
+      ],
+      "expected_relation_path": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q42",
+      "category": "distractor",
+      "question": "Atlas 事件服务的负责人是陈航吗？",
+      "expected_answer": "不是，Atlas 由赵启负责；陈航负责北极星。",
+      "required_keywords": [
+        "不是",
+        "赵启"
+      ],
+      "forbidden_keywords": [
+        "陈航负责Atlas"
+      ],
+      "expected_sources": [
+        "D08_atlas_event_service.txt"
+      ],
+      "expected_entities": [
+        "Atlas事件服务",
+        "赵启",
+        "陈航"
+      ],
+      "expected_relation_path": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ],
+        [
+          "陈航",
+          "NOT_RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q43",
+      "category": "distractor",
+      "question": "曙光客户门户和星图推荐引擎是同一个项目吗？",
+      "expected_answer": "不是，是两个独立项目。",
+      "required_keywords": [
+        "不是",
+        "独立"
+      ],
+      "forbidden_keywords": [
+        "同一个项目"
+      ],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt",
+        "D04_intelligent_product_team.txt"
+      ],
+      "expected_entities": [
+        "曙光客户门户",
+        "星图推荐引擎"
+      ],
+      "expected_relation_path": [
+        [
+          "曙光客户门户",
+          "DISTINCT_FROM",
+          "星图推荐引擎"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q44",
+      "category": "distractor",
+      "question": "河图数据湖当前使用 Elasticsearch 吗？",
+      "expected_answer": "不使用。河图使用 Spark、Iceberg 和 MinIO。",
+      "required_keywords": [
+        "不",
+        "Spark",
+        "Iceberg",
+        "MinIO"
+      ],
+      "forbidden_keywords": [
+        "河图使用Elasticsearch"
+      ],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "expected_entities": [
+        "河图数据湖",
+        "Elasticsearch"
+      ],
+      "expected_relation_path": [
+        [
+          "河图数据湖",
+          "NOT_USES",
+          "Elasticsearch"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q45",
+      "category": "distractor",
+      "question": "猎户座权限服务是否由赵启负责？",
+      "expected_answer": "不是，由方屿负责。",
+      "required_keywords": [
+        "不是",
+        "方屿"
+      ],
+      "forbidden_keywords": [
+        "赵启负责猎户座"
+      ],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "expected_entities": [
+        "猎户座权限服务",
+        "赵启",
+        "方屿"
+      ],
+      "expected_relation_path": [
+        [
+          "赵启",
+          "NOT_RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q46",
+      "category": "distractor",
+      "question": "华远能源是否直接调用北极星检索平台？",
+      "expected_answer": "不直接调用。华远能源通过曙光客户门户和天枢间接使用北极星能力。",
+      "required_keywords": [
+        "不直接",
+        "曙光",
+        "天枢"
+      ],
+      "forbidden_keywords": [
+        "华远能源直接调用北极星"
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt"
+      ],
+      "expected_entities": [
+        "华远能源",
+        "北极星检索平台",
+        "曙光客户门户",
+        "天枢知识平台"
+      ],
+      "expected_relation_path": [
+        [
+          "华远能源",
+          "NOT_DIRECTLY_CALLS",
+          "北极星检索平台"
+        ],
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q47",
+      "category": "distractor",
+      "question": "云桥 API 网关和 Atlas 事件服务承担的是同一种职责吗？",
+      "expected_answer": "不是。云桥负责 HTTP 接入与路由，Atlas 负责 Kafka 事件分发。",
+      "required_keywords": [
+        "不是",
+        "HTTP",
+        "Kafka"
+      ],
+      "forbidden_keywords": [
+        "同一种职责"
+      ],
+      "expected_sources": [
+        "D17_cloudbridge_api_gateway.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "expected_entities": [
+        "云桥API网关",
+        "Atlas事件服务",
+        "Kafka"
+      ],
+      "expected_relation_path": [
+        [
+          "云桥API网关",
+          "NOT_RESPONSIBLE_FOR",
+          "Kafka"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "possible",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q48",
+      "category": "distractor",
+      "question": "晨星报表系统和星图推荐引擎是否都使用 PostgreSQL 作为检索存储？",
+      "expected_answer": "不是。晨星使用 PostgreSQL，而星图明确不使用 PostgreSQL 作为检索存储。",
+      "required_keywords": [
+        "不是",
+        "晨星",
+        "星图"
+      ],
+      "forbidden_keywords": [
+        "星图使用PostgreSQL"
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt",
+        "D13_starmap_recommendation_engine.txt"
+      ],
+      "expected_entities": [
+        "晨星报表系统",
+        "星图推荐引擎",
+        "PostgreSQL"
+      ],
+      "expected_relation_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_USES",
+          "PostgreSQL"
+        ]
+      ],
+      "requires_abstention": false,
+      "graph_advantage_expected": "expected",
+      "difficulty": "hard"
+    },
+    {
+      "question_id": "Q49",
+      "category": "abstention",
+      "question": "星河智联科技集团的 CEO 是谁？",
+      "expected_answer": "语料未记录 CEO，无法确定。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "林岚是CEO",
+        "赵启是CEO",
+        "顾然是CEO"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "星河智联科技集团"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q50",
+      "category": "abstention",
+      "question": "星河智联科技集团的 CFO 是谁？",
+      "expected_answer": "语料未记录 CFO，无法确定。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "林岚是CFO",
+        "赵启是CFO"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "星河智联科技集团"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q51",
+      "category": "abstention",
+      "question": "人力资源部负责人是谁？",
+      "expected_answer": "语料没有人力资源部负责人信息，无法确定。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "林岚",
+        "赵启",
+        "顾然",
+        "周宁",
+        "叶青"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "人力资源部"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q52",
+      "category": "abstention",
+      "question": "南斗项目的负责人是谁？",
+      "expected_answer": "语料未提及南斗项目，无法确定。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "陈航",
+        "赵启",
+        "唐悦",
+        "韩策"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "南斗项目"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q53",
+      "category": "abstention",
+      "question": "天枢知识平台生产环境使用的 Kubernetes 版本是多少？",
+      "expected_answer": "语料未记录 Kubernetes 版本。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "1.28",
+        "1.29",
+        "1.30",
+        "1.31"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "天枢知识平台",
+        "Kubernetes"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q54",
+      "category": "abstention",
+      "question": "北极星检索平台的日活用户数是多少？",
+      "expected_answer": "语料未提供日活用户数。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "1000",
+        "10000",
+        "10万"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "北极星检索平台"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q55",
+      "category": "abstention",
+      "question": "星河智联科技集团 2026 年第二季度营收是多少？",
+      "expected_answer": "语料未提供营收数据。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "亿元",
+        "万元"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "星河智联科技集团"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q56",
+      "category": "abstention",
+      "question": "华远能源的本次部署位于哪个城市？",
+      "expected_answer": "语料明确未记录部署城市。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "北京",
+        "上海",
+        "南京",
+        "深圳"
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt"
+      ],
+      "expected_entities": [
+        "华远能源"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    },
+    {
+      "question_id": "Q57",
+      "category": "abstention",
+      "question": "猎户座权限服务使用什么具体密码加密算法？",
+      "expected_answer": "语料没有说明具体密码加密算法。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "AES",
+        "RSA",
+        "bcrypt",
+        "Argon2"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "猎户座权限服务"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q58",
+      "category": "abstention",
+      "question": "Atlas 事件服务的 SLA 可用性百分比是多少？",
+      "expected_answer": "语料未提供 SLA 可用性百分比。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "99.9%",
+        "99.99%",
+        "99.95%"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "Atlas事件服务"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q59",
+      "category": "abstention",
+      "question": "北极星检索平台正式上线的具体日期是什么？",
+      "expected_answer": "语料未记录正式上线日期。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "2026年",
+        "2025年"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "北极星检索平台"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "medium"
+    },
+    {
+      "question_id": "Q60",
+      "category": "abstention",
+      "question": "陈航的手机号码是多少？",
+      "expected_answer": "语料没有提供陈航的手机号码。",
+      "required_keywords": [
+        "信息不足",
+        "未提及",
+        "无法确定",
+        "没有相关信息",
+        "未记录"
+      ],
+      "forbidden_keywords": [
+        "138",
+        "139",
+        "手机号为"
+      ],
+      "expected_sources": [],
+      "expected_entities": [
+        "陈航"
+      ],
+      "expected_relation_path": [],
+      "requires_abstention": true,
+      "graph_advantage_expected": "none",
+      "difficulty": "easy"
+    }
+  ]
+}

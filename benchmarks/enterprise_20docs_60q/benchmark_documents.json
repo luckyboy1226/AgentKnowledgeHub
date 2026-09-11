@@ -1,0 +1,1468 @@
+{
+  "benchmark_name": "AgentKnowledgeHub Enterprise GraphRAG Benchmark",
+  "version": "1.0",
+  "language": "zh-CN",
+  "document_count": 20,
+  "design_notes": {
+    "purpose": "用于 Vector RAG 与 GraphRAG 的工程机制对照评测，不代表生产场景普遍性能。",
+    "fairness": "包含事实、多跳、约束、干扰与拒答场景，不预设 GraphRAG 必须胜出。",
+    "relation_semantics": "relations 字段为人工标注的 benchmark ground truth；真实入库仍以文档正文经系统抽取为准。"
+  },
+  "documents": [
+    {
+      "id": "D01",
+      "filename": "D01_group_organization.txt",
+      "category": "组织与人员",
+      "content": "星河智联科技集团设有数据平台部、应用架构部、智能产品部、安全运营部和客户成功部五个核心部门。林岚担任数据平台部负责人，赵启担任应用架构部负责人，顾然担任智能产品部负责人，周宁担任安全运营部负责人，叶青担任客户成功部负责人。各部门负责人负责本部门资源协调和项目支持，但本文件不记录集团 CEO、CFO 等高管信息。",
+      "entities": [
+        [
+          "星河智联科技集团",
+          "Organization"
+        ],
+        [
+          "数据平台部",
+          "Department"
+        ],
+        [
+          "应用架构部",
+          "Department"
+        ],
+        [
+          "智能产品部",
+          "Department"
+        ],
+        [
+          "安全运营部",
+          "Department"
+        ],
+        [
+          "客户成功部",
+          "Department"
+        ],
+        [
+          "林岚",
+          "Person"
+        ],
+        [
+          "赵启",
+          "Person"
+        ],
+        [
+          "顾然",
+          "Person"
+        ],
+        [
+          "周宁",
+          "Person"
+        ],
+        [
+          "叶青",
+          "Person"
+        ]
+      ],
+      "relations": [
+        [
+          "星河智联科技集团",
+          "HAS_DEPARTMENT",
+          "数据平台部"
+        ],
+        [
+          "星河智联科技集团",
+          "HAS_DEPARTMENT",
+          "应用架构部"
+        ],
+        [
+          "星河智联科技集团",
+          "HAS_DEPARTMENT",
+          "智能产品部"
+        ],
+        [
+          "星河智联科技集团",
+          "HAS_DEPARTMENT",
+          "安全运营部"
+        ],
+        [
+          "星河智联科技集团",
+          "HAS_DEPARTMENT",
+          "客户成功部"
+        ],
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部"
+        ],
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部"
+        ],
+        [
+          "顾然",
+          "HEAD_OF",
+          "智能产品部"
+        ],
+        [
+          "周宁",
+          "HEAD_OF",
+          "安全运营部"
+        ],
+        [
+          "叶青",
+          "HEAD_OF",
+          "客户成功部"
+        ]
+      ],
+      "critical_facts": [
+        "五个核心部门及负责人",
+        "未记录 CEO/CFO"
+      ],
+      "intended_distractors": [
+        "多位部门负责人，避免把部门负责人误判为集团高管"
+      ]
+    },
+    {
+      "id": "D02",
+      "filename": "D02_data_platform_team.txt",
+      "category": "组织与人员",
+      "content": "数据平台部负责企业数据接入、检索基础设施和数据治理。陈航是数据工程师，隶属数据平台部，主要负责检索链路与索引工程；沈舟是数据治理工程师，同样隶属数据平台部，主要负责数据湖治理。陈航不是应用架构部成员。林岚作为部门负责人对两人的工作进行资源协调。",
+      "entities": [
+        [
+          "数据平台部",
+          "Department"
+        ],
+        [
+          "陈航",
+          "Person"
+        ],
+        [
+          "沈舟",
+          "Person"
+        ],
+        [
+          "林岚",
+          "Person"
+        ],
+        [
+          "应用架构部",
+          "Department"
+        ],
+        [
+          "数据工程师",
+          "Role"
+        ],
+        [
+          "数据治理工程师",
+          "Role"
+        ]
+      ],
+      "relations": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部"
+        ],
+        [
+          "陈航",
+          "HAS_ROLE",
+          "数据工程师"
+        ],
+        [
+          "沈舟",
+          "MEMBER_OF",
+          "数据平台部"
+        ],
+        [
+          "沈舟",
+          "HAS_ROLE",
+          "数据治理工程师"
+        ],
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部"
+        ],
+        [
+          "陈航",
+          "NOT_MEMBER_OF",
+          "应用架构部"
+        ]
+      ],
+      "critical_facts": [
+        "陈航=数据平台部数据工程师",
+        "沈舟=数据平台部数据治理工程师"
+      ],
+      "intended_distractors": [
+        "应用架构部与数据平台部均参与知识平台建设，但陈航只属于数据平台部"
+      ]
+    },
+    {
+      "id": "D03",
+      "filename": "D03_application_architecture_team.txt",
+      "category": "组织与人员",
+      "content": "应用架构部负责共享服务、接口治理和平台架构。赵启是应用架构部负责人，并负责事件服务方向；魏衡是平台架构师，隶属应用架构部，主要负责 API 网关与服务接入规范。应用架构部与数据平台部在天枢知识平台上协作，但两个部门的人员归属保持独立。",
+      "entities": [
+        [
+          "应用架构部",
+          "Department"
+        ],
+        [
+          "赵启",
+          "Person"
+        ],
+        [
+          "魏衡",
+          "Person"
+        ],
+        [
+          "平台架构师",
+          "Role"
+        ],
+        [
+          "数据平台部",
+          "Department"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部"
+        ],
+        [
+          "魏衡",
+          "HAS_ROLE",
+          "平台架构师"
+        ],
+        [
+          "应用架构部",
+          "COLLABORATES_WITH",
+          "数据平台部"
+        ],
+        [
+          "应用架构部",
+          "SUPPORTS",
+          "天枢知识平台"
+        ]
+      ],
+      "critical_facts": [
+        "赵启负责应用架构部",
+        "魏衡属于应用架构部"
+      ],
+      "intended_distractors": [
+        "协作不代表人员跨部门归属"
+      ]
+    },
+    {
+      "id": "D04",
+      "filename": "D04_intelligent_product_team.txt",
+      "category": "组织与人员",
+      "content": "智能产品部负责智能推荐与产品策略。顾然担任智能产品部负责人。唐悦是产品经理，隶属智能产品部，负责星图推荐引擎的产品规划和需求协调。星图推荐引擎与北极星检索平台名称相近，但属于不同项目，也由不同人员负责。",
+      "entities": [
+        [
+          "智能产品部",
+          "Department"
+        ],
+        [
+          "顾然",
+          "Person"
+        ],
+        [
+          "唐悦",
+          "Person"
+        ],
+        [
+          "产品经理",
+          "Role"
+        ],
+        [
+          "星图推荐引擎",
+          "Project"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "顾然",
+          "HEAD_OF",
+          "智能产品部"
+        ],
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部"
+        ],
+        [
+          "唐悦",
+          "HAS_ROLE",
+          "产品经理"
+        ],
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎"
+        ],
+        [
+          "星图推荐引擎",
+          "DISTINCT_FROM",
+          "北极星检索平台"
+        ]
+      ],
+      "critical_facts": [
+        "唐悦属于智能产品部并负责星图推荐引擎"
+      ],
+      "intended_distractors": [
+        "星图推荐引擎 vs 北极星检索平台"
+      ]
+    },
+    {
+      "id": "D05",
+      "filename": "D05_security_operations_team.txt",
+      "category": "组织与人员",
+      "content": "安全运营部负责权限、安全审计和运行监控。周宁担任安全运营部负责人。方屿是安全工程师，隶属安全运营部，承担统一权限服务的工程维护；周宁主要负责安全运营与监控治理，并不负责北极星检索平台。",
+      "entities": [
+        [
+          "安全运营部",
+          "Department"
+        ],
+        [
+          "周宁",
+          "Person"
+        ],
+        [
+          "方屿",
+          "Person"
+        ],
+        [
+          "安全工程师",
+          "Role"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "周宁",
+          "HEAD_OF",
+          "安全运营部"
+        ],
+        [
+          "方屿",
+          "MEMBER_OF",
+          "安全运营部"
+        ],
+        [
+          "方屿",
+          "HAS_ROLE",
+          "安全工程师"
+        ],
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ]
+      ],
+      "critical_facts": [
+        "方屿属于安全运营部",
+        "周宁明确不负责北极星"
+      ],
+      "intended_distractors": [
+        "周宁是部门负责人，但不是北极星项目负责人"
+      ]
+    },
+    {
+      "id": "D06",
+      "filename": "D06_customer_success_team.txt",
+      "category": "组织与人员",
+      "content": "客户成功部负责客户解决方案、部署协调和交付支持。叶青担任客户成功部负责人。苏澄是解决方案架构师，隶属客户成功部，主要负责客户门户类项目的落地和跨系统联调。客户成功部可以使用其他部门提供的平台能力，但不改变其人员归属。",
+      "entities": [
+        [
+          "客户成功部",
+          "Department"
+        ],
+        [
+          "叶青",
+          "Person"
+        ],
+        [
+          "苏澄",
+          "Person"
+        ],
+        [
+          "解决方案架构师",
+          "Role"
+        ]
+      ],
+      "relations": [
+        [
+          "叶青",
+          "HEAD_OF",
+          "客户成功部"
+        ],
+        [
+          "苏澄",
+          "MEMBER_OF",
+          "客户成功部"
+        ],
+        [
+          "苏澄",
+          "HAS_ROLE",
+          "解决方案架构师"
+        ]
+      ],
+      "critical_facts": [
+        "苏澄属于客户成功部"
+      ],
+      "intended_distractors": [
+        "使用其他部门平台能力不等于人员归属其他部门"
+      ]
+    },
+    {
+      "id": "D07",
+      "filename": "D07_northstar_retrieval_project.txt",
+      "category": "项目与产品",
+      "content": "北极星检索平台是集团的统一检索项目，由陈航负责。当前向量检索存储使用 Chroma，并通过语义向量完成知识片段召回。北极星依赖 Atlas 事件服务获取文档变更事件，以保持索引更新及时。北极星本身不负责客户门户认证，也不直接承担 API 网关职责。",
+      "entities": [
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "陈航",
+          "Person"
+        ],
+        [
+          "Chroma",
+          "Technology"
+        ],
+        [
+          "Atlas事件服务",
+          "Service"
+        ],
+        [
+          "客户门户认证",
+          "Capability"
+        ],
+        [
+          "API网关",
+          "Capability"
+        ]
+      ],
+      "relations": [
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台"
+        ],
+        [
+          "北极星检索平台",
+          "USES",
+          "Chroma"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_RESPONSIBLE_FOR",
+          "客户门户认证"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_RESPONSIBLE_FOR",
+          "API网关"
+        ]
+      ],
+      "critical_facts": [
+        "陈航负责北极星",
+        "北极星使用Chroma",
+        "北极星依赖Atlas"
+      ],
+      "intended_distractors": [
+        "北极星负责检索，不负责认证或网关"
+      ]
+    },
+    {
+      "id": "D08",
+      "filename": "D08_atlas_event_service.txt",
+      "category": "技术与系统依赖",
+      "content": "Atlas 事件服务由赵启负责，是集团内部的事件分发服务。Atlas 使用 Kafka 作为消息队列，并使用 PostgreSQL 保存事件订阅与消费位点元数据。Atlas 向北极星检索平台提供文档变更事件。Atlas 的负责人不是陈航；陈航负责的是北极星检索平台。",
+      "entities": [
+        [
+          "Atlas事件服务",
+          "Service"
+        ],
+        [
+          "赵启",
+          "Person"
+        ],
+        [
+          "Kafka",
+          "Technology"
+        ],
+        [
+          "PostgreSQL",
+          "Technology"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "陈航",
+          "Person"
+        ]
+      ],
+      "relations": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "Atlas事件服务",
+          "PROVIDES_EVENTS_TO",
+          "北极星检索平台"
+        ],
+        [
+          "陈航",
+          "NOT_RESPONSIBLE_FOR",
+          "Atlas事件服务"
+        ]
+      ],
+      "critical_facts": [
+        "赵启负责Atlas",
+        "Atlas使用Kafka/PostgreSQL"
+      ],
+      "intended_distractors": [
+        "陈航与Atlas有依赖关系但不是Atlas负责人"
+      ]
+    },
+    {
+      "id": "D09",
+      "filename": "D09_tianshu_knowledge_platform.txt",
+      "category": "项目与产品",
+      "content": "天枢知识平台由数据平台部与应用架构部共同交付，林岚和赵启是共同负责人。平台使用 Neo4j 存储知识图谱关系，使用 Chroma 存储文本向量。天枢依赖猎户座权限服务完成用户鉴权。平台的图谱关系与向量检索结果会共同参与知识问答。",
+      "entities": [
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "数据平台部",
+          "Department"
+        ],
+        [
+          "应用架构部",
+          "Department"
+        ],
+        [
+          "林岚",
+          "Person"
+        ],
+        [
+          "赵启",
+          "Person"
+        ],
+        [
+          "Neo4j",
+          "Technology"
+        ],
+        [
+          "Chroma",
+          "Technology"
+        ],
+        [
+          "猎户座权限服务",
+          "Service"
+        ]
+      ],
+      "relations": [
+        [
+          "数据平台部",
+          "DELIVERS",
+          "天枢知识平台"
+        ],
+        [
+          "应用架构部",
+          "DELIVERS",
+          "天枢知识平台"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma"
+        ],
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ]
+      ],
+      "critical_facts": [
+        "天枢共同负责人=林岚、赵启",
+        "使用Neo4j+Chroma",
+        "依赖猎户座权限服务"
+      ],
+      "intended_distractors": [
+        "共同交付不等于所有参与者都是负责人"
+      ]
+    },
+    {
+      "id": "D10",
+      "filename": "D10_tianshu_northstar_collaboration.txt",
+      "category": "合作与运营",
+      "content": "在天枢知识平台与北极星检索平台的协作约定中，北极星向天枢提供检索索引，天枢消费北极星生成的检索结果。该关系是“北极星为天枢提供检索索引”，不是“北极星依赖天枢”。北极星的上游依赖仍然是 Atlas 事件服务。此约定用于避免将提供关系与依赖关系混淆。",
+      "entities": [
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "Atlas事件服务",
+          "Service"
+        ]
+      ],
+      "relations": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务"
+        ]
+      ],
+      "critical_facts": [
+        "北极星→天枢是PROVIDES_INDEX_TO",
+        "明确不是DEPENDS_ON"
+      ],
+      "intended_distractors": [
+        "提供索引与依赖方向相反"
+      ]
+    },
+    {
+      "id": "D11",
+      "filename": "D11_orion_authorization_service.txt",
+      "category": "技术与系统依赖",
+      "content": "猎户座权限服务是统一鉴权服务，由方屿负责。服务使用 Redis 保存短期会话状态，使用 PostgreSQL 保存权限策略与审计记录。猎户座向天枢知识平台和曙光客户门户提供鉴权能力。赵启参与平台架构协作，但不负责猎户座权限服务。",
+      "entities": [
+        [
+          "猎户座权限服务",
+          "Service"
+        ],
+        [
+          "方屿",
+          "Person"
+        ],
+        [
+          "Redis",
+          "Technology"
+        ],
+        [
+          "PostgreSQL",
+          "Technology"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "曙光客户门户",
+          "Project"
+        ],
+        [
+          "赵启",
+          "Person"
+        ]
+      ],
+      "relations": [
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ],
+        [
+          "猎户座权限服务",
+          "USES",
+          "Redis"
+        ],
+        [
+          "猎户座权限服务",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "猎户座权限服务",
+          "PROVIDES_AUTH_TO",
+          "天枢知识平台"
+        ],
+        [
+          "猎户座权限服务",
+          "PROVIDES_AUTH_TO",
+          "曙光客户门户"
+        ],
+        [
+          "赵启",
+          "NOT_RESPONSIBLE_FOR",
+          "猎户座权限服务"
+        ]
+      ],
+      "critical_facts": [
+        "方屿负责猎户座",
+        "使用Redis+PostgreSQL",
+        "为天枢和曙光提供认证"
+      ],
+      "intended_distractors": [
+        "赵启是架构部负责人但不是猎户座负责人"
+      ]
+    },
+    {
+      "id": "D12",
+      "filename": "D12_dawn_customer_portal.txt",
+      "category": "项目与产品",
+      "content": "曙光客户门户由苏澄负责，是面向客户的知识服务入口。门户调用天枢知识平台获取知识问答结果，并依赖猎户座权限服务完成用户认证。门户本身不直接访问北极星检索平台，而是通过天枢使用其检索能力。曙光客户门户与星图推荐引擎是两个独立项目。",
+      "entities": [
+        [
+          "曙光客户门户",
+          "Project"
+        ],
+        [
+          "苏澄",
+          "Person"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "猎户座权限服务",
+          "Service"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "星图推荐引擎",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "苏澄",
+          "RESPONSIBLE_FOR",
+          "曙光客户门户"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "天枢知识平台"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务"
+        ],
+        [
+          "曙光客户门户",
+          "NOT_DIRECTLY_CALLS",
+          "北极星检索平台"
+        ],
+        [
+          "曙光客户门户",
+          "DISTINCT_FROM",
+          "星图推荐引擎"
+        ]
+      ],
+      "critical_facts": [
+        "苏澄负责曙光",
+        "曙光依赖天枢与猎户座",
+        "不直接访问北极星"
+      ],
+      "intended_distractors": [
+        "曙光与星图名称都带产品性质，但为独立项目"
+      ]
+    },
+    {
+      "id": "D13",
+      "filename": "D13_starmap_recommendation_engine.txt",
+      "category": "项目与产品",
+      "content": "星图推荐引擎由唐悦负责，用于内容推荐与相似项目发现。当前在线向量检索使用 Milvus，缓存使用 Redis。星图当前没有切换到 Chroma，也不使用 PostgreSQL 作为检索存储。星图与北极星检索平台是独立项目，两者的负责人和技术路线均不同。",
+      "entities": [
+        [
+          "星图推荐引擎",
+          "Project"
+        ],
+        [
+          "唐悦",
+          "Person"
+        ],
+        [
+          "Milvus",
+          "Technology"
+        ],
+        [
+          "Redis",
+          "Technology"
+        ],
+        [
+          "Chroma",
+          "Technology"
+        ],
+        [
+          "PostgreSQL",
+          "Technology"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎"
+        ],
+        [
+          "星图推荐引擎",
+          "USES",
+          "Milvus"
+        ],
+        [
+          "星图推荐引擎",
+          "USES",
+          "Redis"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_USES",
+          "Chroma"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_USES",
+          "PostgreSQL"
+        ],
+        [
+          "星图推荐引擎",
+          "DISTINCT_FROM",
+          "北极星检索平台"
+        ]
+      ],
+      "critical_facts": [
+        "星图当前使用Milvus+Redis",
+        "未切换Chroma"
+      ],
+      "intended_distractors": [
+        "Milvus/Chroma均为向量数据库，易混淆"
+      ]
+    },
+    {
+      "id": "D14",
+      "filename": "D14_hetu_data_lake.txt",
+      "category": "技术与系统依赖",
+      "content": "河图数据湖由沈舟负责，承担批量数据治理与历史数据归档。数据湖采用 Spark 进行计算，Iceberg 管理表格式，MinIO 存储对象数据。河图向晨星报表系统提供清洗后的运营数据，也向星图推荐引擎提供离线特征。当前河图不使用 Elasticsearch。",
+      "entities": [
+        [
+          "河图数据湖",
+          "Project"
+        ],
+        [
+          "沈舟",
+          "Person"
+        ],
+        [
+          "Spark",
+          "Technology"
+        ],
+        [
+          "Iceberg",
+          "Technology"
+        ],
+        [
+          "MinIO",
+          "Technology"
+        ],
+        [
+          "晨星报表系统",
+          "Project"
+        ],
+        [
+          "星图推荐引擎",
+          "Project"
+        ],
+        [
+          "Elasticsearch",
+          "Technology"
+        ]
+      ],
+      "relations": [
+        [
+          "沈舟",
+          "RESPONSIBLE_FOR",
+          "河图数据湖"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "Spark"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "Iceberg"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "MinIO"
+        ],
+        [
+          "河图数据湖",
+          "PROVIDES_DATA_TO",
+          "晨星报表系统"
+        ],
+        [
+          "河图数据湖",
+          "PROVIDES_FEATURES_TO",
+          "星图推荐引擎"
+        ],
+        [
+          "河图数据湖",
+          "NOT_USES",
+          "Elasticsearch"
+        ]
+      ],
+      "critical_facts": [
+        "沈舟负责河图",
+        "Spark+Iceberg+MinIO",
+        "向晨星和星图供数"
+      ],
+      "intended_distractors": [
+        "晨星使用Elasticsearch，但河图不使用"
+      ]
+    },
+    {
+      "id": "D15",
+      "filename": "D15_morningstar_reporting_system.txt",
+      "category": "项目与产品",
+      "content": "晨星报表系统用于运营分析，由韩策负责。系统使用 PostgreSQL 存储业务指标，使用 Elasticsearch 支持报表检索。周宁参与晨星的数据分析与运营审阅，但不是项目负责人。晨星与北极星检索平台、天枢知识平台之间不存在业务依赖关系。",
+      "entities": [
+        [
+          "晨星报表系统",
+          "Project"
+        ],
+        [
+          "韩策",
+          "Person"
+        ],
+        [
+          "PostgreSQL",
+          "Technology"
+        ],
+        [
+          "Elasticsearch",
+          "Technology"
+        ],
+        [
+          "周宁",
+          "Person"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch"
+        ],
+        [
+          "周宁",
+          "PARTICIPATES_IN",
+          "晨星报表系统"
+        ],
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "晨星报表系统"
+        ],
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "北极星检索平台"
+        ],
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台"
+        ]
+      ],
+      "critical_facts": [
+        "韩策负责晨星",
+        "周宁只参与不负责",
+        "晨星不依赖北极星/天枢"
+      ],
+      "intended_distractors": [
+        "参与 vs 负责",
+        "报表检索 vs 检索平台"
+      ]
+    },
+    {
+      "id": "D16",
+      "filename": "D16_liuguang_observability_platform.txt",
+      "category": "合作与运营",
+      "content": "流光监控平台由安全运营部维护，周宁负责运营治理。平台使用 Prometheus 收集指标，使用 Grafana 展示监控面板。流光监控 Atlas 事件服务和猎户座权限服务的运行状态。这里的“监控”只是可观测性关系，不代表流光在业务上依赖 Atlas 或猎户座。",
+      "entities": [
+        [
+          "流光监控平台",
+          "Project"
+        ],
+        [
+          "安全运营部",
+          "Department"
+        ],
+        [
+          "周宁",
+          "Person"
+        ],
+        [
+          "Prometheus",
+          "Technology"
+        ],
+        [
+          "Grafana",
+          "Technology"
+        ],
+        [
+          "Atlas事件服务",
+          "Service"
+        ],
+        [
+          "猎户座权限服务",
+          "Service"
+        ]
+      ],
+      "relations": [
+        [
+          "安全运营部",
+          "MAINTAINS",
+          "流光监控平台"
+        ],
+        [
+          "周宁",
+          "RESPONSIBLE_FOR",
+          "流光监控平台"
+        ],
+        [
+          "流光监控平台",
+          "USES",
+          "Prometheus"
+        ],
+        [
+          "流光监控平台",
+          "USES",
+          "Grafana"
+        ],
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务"
+        ],
+        [
+          "流光监控平台",
+          "MONITORS",
+          "猎户座权限服务"
+        ],
+        [
+          "流光监控平台",
+          "NOT_DEPENDS_ON",
+          "Atlas事件服务"
+        ],
+        [
+          "流光监控平台",
+          "NOT_DEPENDS_ON",
+          "猎户座权限服务"
+        ]
+      ],
+      "critical_facts": [
+        "Prometheus+Grafana",
+        "监控≠依赖"
+      ],
+      "intended_distractors": [
+        "MONITORS 与 DEPENDS_ON"
+      ]
+    },
+    {
+      "id": "D17",
+      "filename": "D17_cloudbridge_api_gateway.txt",
+      "category": "技术与系统依赖",
+      "content": "云桥 API 网关由魏衡负责，用于统一 HTTP 接入和路由治理。网关使用 Kong 作为核心网关组件，并使用 Redis 保存部分限流状态。云桥为曙光客户门户和天枢知识平台的外部接口提供路由能力。云桥不承担 Kafka 事件分发职责；事件分发由 Atlas 事件服务负责。",
+      "entities": [
+        [
+          "云桥API网关",
+          "Service"
+        ],
+        [
+          "魏衡",
+          "Person"
+        ],
+        [
+          "Kong",
+          "Technology"
+        ],
+        [
+          "Redis",
+          "Technology"
+        ],
+        [
+          "曙光客户门户",
+          "Project"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "Kafka",
+          "Technology"
+        ],
+        [
+          "Atlas事件服务",
+          "Service"
+        ]
+      ],
+      "relations": [
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关"
+        ],
+        [
+          "云桥API网关",
+          "USES",
+          "Kong"
+        ],
+        [
+          "云桥API网关",
+          "USES",
+          "Redis"
+        ],
+        [
+          "云桥API网关",
+          "ROUTES_FOR",
+          "曙光客户门户"
+        ],
+        [
+          "云桥API网关",
+          "ROUTES_FOR",
+          "天枢知识平台"
+        ],
+        [
+          "云桥API网关",
+          "NOT_RESPONSIBLE_FOR",
+          "Kafka"
+        ],
+        [
+          "Atlas事件服务",
+          "RESPONSIBLE_FOR",
+          "Kafka事件分发"
+        ]
+      ],
+      "critical_facts": [
+        "魏衡负责云桥",
+        "Kong+Redis",
+        "网关路由≠事件分发"
+      ],
+      "intended_distractors": [
+        "云桥与Atlas都是共享服务，但职责不同"
+      ]
+    },
+    {
+      "id": "D18",
+      "filename": "D18_incident_2026_07_18.txt",
+      "category": "合作与运营",
+      "content": "2026 年 7 月 18 日发生 E-2026-07-18 事件：Atlas 事件服务的 Kafka 消费出现积压，导致北极星检索平台的索引刷新延迟，并进一步使天枢知识平台看到的检索内容短暂滞后。猎户座权限服务与流光监控平台本身未发生业务故障。事故处理确认根因是 Atlas 的 Kafka 消费延迟，而不是 Chroma 或 Neo4j 数据损坏。",
+      "entities": [
+        [
+          "E-2026-07-18",
+          "Event"
+        ],
+        [
+          "Atlas事件服务",
+          "Service"
+        ],
+        [
+          "Kafka",
+          "Technology"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "猎户座权限服务",
+          "Service"
+        ],
+        [
+          "流光监控平台",
+          "Project"
+        ],
+        [
+          "Chroma",
+          "Technology"
+        ],
+        [
+          "Neo4j",
+          "Technology"
+        ]
+      ],
+      "relations": [
+        [
+          "E-2026-07-18",
+          "ROOT_CAUSE",
+          "Atlas事件服务"
+        ],
+        [
+          "Atlas事件服务",
+          "HAS_ISSUE",
+          "Kafka消费积压"
+        ],
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台"
+        ],
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "天枢知识平台"
+        ],
+        [
+          "E-2026-07-18",
+          "NOT_AFFECTED",
+          "猎户座权限服务"
+        ],
+        [
+          "E-2026-07-18",
+          "NOT_CAUSED_BY",
+          "Chroma"
+        ],
+        [
+          "E-2026-07-18",
+          "NOT_CAUSED_BY",
+          "Neo4j"
+        ]
+      ],
+      "critical_facts": [
+        "事故根因=Atlas Kafka消费延迟",
+        "影响北极星和天枢"
+      ],
+      "intended_distractors": [
+        "Chroma/Neo4j不是故障根因"
+      ]
+    },
+    {
+      "id": "D19",
+      "filename": "D19_q3_technology_roadmap.txt",
+      "category": "合作与运营",
+      "content": "Q3 技术路线评审记录显示：星图推荐引擎计划评估 Chroma 作为候选向量库，但当前生产环境仍然使用 Milvus，是否迁移尚未决定。北极星检索平台继续使用 Chroma。评审要求所有性能结论区分“当前状态”和“未来计划”，不得把候选方案描述为已上线方案。",
+      "entities": [
+        [
+          "星图推荐引擎",
+          "Project"
+        ],
+        [
+          "Chroma",
+          "Technology"
+        ],
+        [
+          "Milvus",
+          "Technology"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_YET_MIGRATED_TO",
+          "Chroma"
+        ],
+        [
+          "北极星检索平台",
+          "CURRENTLY_USES",
+          "Chroma"
+        ]
+      ],
+      "critical_facts": [
+        "星图当前Milvus，仅评估Chroma",
+        "北极星继续使用Chroma"
+      ],
+      "intended_distractors": [
+        "当前状态 vs 路线图计划"
+      ]
+    },
+    {
+      "id": "D20",
+      "filename": "D20_huayuan_energy_deployment.txt",
+      "category": "合作与运营",
+      "content": "华远能源采用曙光客户门户作为知识服务入口，由苏澄负责现场方案落地，叶青担任客户交付协调人。该部署通过曙光客户门户调用天枢知识平台完成问答，并通过猎户座权限服务完成认证。华远能源不直接访问北极星检索平台，北极星能力由天枢间接使用。本文件不记录华远能源所在城市。",
+      "entities": [
+        [
+          "华远能源",
+          "Organization"
+        ],
+        [
+          "曙光客户门户",
+          "Project"
+        ],
+        [
+          "苏澄",
+          "Person"
+        ],
+        [
+          "叶青",
+          "Person"
+        ],
+        [
+          "天枢知识平台",
+          "Project"
+        ],
+        [
+          "猎户座权限服务",
+          "Service"
+        ],
+        [
+          "北极星检索平台",
+          "Project"
+        ]
+      ],
+      "relations": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户"
+        ],
+        [
+          "苏澄",
+          "LEADS_DEPLOYMENT_FOR",
+          "华远能源"
+        ],
+        [
+          "叶青",
+          "COORDINATES_DELIVERY_FOR",
+          "华远能源"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台"
+        ],
+        [
+          "曙光客户门户",
+          "AUTHENTICATES_VIA",
+          "猎户座权限服务"
+        ],
+        [
+          "华远能源",
+          "NOT_DIRECTLY_CALLS",
+          "北极星检索平台"
+        ]
+      ],
+      "critical_facts": [
+        "华远能源→曙光→天枢/猎户座",
+        "不直接访问北极星",
+        "城市未记录"
+      ],
+      "intended_distractors": [
+        "客户侧入口与底层检索平台不是直接调用关系"
+      ]
+    }
+  ]
+}

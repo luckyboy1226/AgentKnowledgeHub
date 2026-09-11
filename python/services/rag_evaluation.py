@@ -45,6 +45,28 @@ class EvaluationCase:
     negation_target_terms: tuple[str, ...] = ()
     positive_claim_patterns: tuple[str, ...] = ()
     abstention_positive_claim_patterns: tuple[str, ...] = ()
+    expected_answer: str = ""
+    expected_relation_path: tuple[tuple[str, str, str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class BenchmarkDocument:
+    """Immutable benchmark document loaded from a reviewed fixture."""
+
+    document_id: str
+    filename: str
+    content: str
+
+
+@dataclass(frozen=True)
+class EvaluationFixture:
+    """Validated, fixture-owned corpus and question set for one evaluation."""
+
+    name: str
+    version: str
+    documents: tuple[BenchmarkDocument, ...]
+    cases: tuple[EvaluationCase, ...]
+    root: Path
 
 
 # The 12 cases intentionally have overlapping categories (for example,
@@ -75,6 +97,127 @@ SYNTHETIC_DOCUMENTS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+def _fixture_error(message: str) -> ValueError:
+    return ValueError(f"Invalid evaluation fixture: {message}")
+
+
+def _relation_path(value: object) -> tuple[tuple[str, str, str, str], ...]:
+    """Normalize fixture relation tuples; missing direction is explicitly forward."""
+    if not isinstance(value, list):
+        raise _fixture_error("expected_relation_path must be a list")
+    edges: list[tuple[str, str, str, str]] = []
+    for raw in value:
+        if not isinstance(raw, list) or len(raw) not in (3, 4):
+            raise _fixture_error("each expected_relation_path edge must have 3 or 4 strings")
+        subject, predicate, target = (str(item).strip() for item in raw[:3])
+        direction = str(raw[3]).strip() if len(raw) == 4 else "forward"
+        if not subject or not predicate or not target or direction not in {"forward", "reverse"}:
+            raise _fixture_error("relation edge has an invalid subject, predicate, object, or direction")
+        edges.append((subject, predicate, target, direction))
+    return tuple(edges)
+
+
+def load_evaluation_fixture(root: str | Path) -> EvaluationFixture:
+    """Load a reviewed fixture without modifying its documents or questions.
+
+    The loader checks manifest counts and verifies every JSON document's text
+    against its corresponding ``documents/*.txt`` file. It intentionally does
+    not fill defaults for missing question fields: benchmark drift must fail
+    before an evaluation can start.
+    """
+    fixture_root = Path(root).resolve()
+    manifest_path = fixture_root / "benchmark_manifest.json"
+    documents_path = fixture_root / "benchmark_documents.json"
+    questions_path = fixture_root / "benchmark_questions.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        documents_payload = json.loads(documents_path.read_text(encoding="utf-8"))
+        questions_payload = json.loads(questions_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise _fixture_error(f"unable to read fixture files ({type(exc).__name__})") from exc
+    if not all(isinstance(value, dict) for value in (manifest, documents_payload, questions_payload)):
+        raise _fixture_error("fixture roots must be JSON objects")
+    raw_documents = documents_payload.get("documents")
+    raw_questions = questions_payload.get("questions")
+    if not isinstance(raw_documents, list) or not isinstance(raw_questions, list):
+        raise _fixture_error("documents and questions must be lists")
+    if manifest.get("documents") != len(raw_documents) or manifest.get("questions") != len(raw_questions):
+        raise _fixture_error("manifest counts do not match fixture payloads")
+    if documents_payload.get("document_count") != len(raw_documents) or questions_payload.get("question_count") != len(raw_questions):
+        raise _fixture_error("payload counts do not match fixture lists")
+
+    documents: list[BenchmarkDocument] = []
+    filenames: set[str] = set()
+    for raw in raw_documents:
+        if not isinstance(raw, dict):
+            raise _fixture_error("document entry must be an object")
+        document_id, filename, content = (str(raw.get(key, "")).strip() for key in ("id", "filename", "content"))
+        if not document_id or not filename or not content or filename != Path(filename).name or filename in filenames:
+            raise _fixture_error("document id/filename/content is invalid or duplicate")
+        try:
+            file_content = (fixture_root / "documents" / filename).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise _fixture_error(f"document text missing for {filename}") from exc
+        if file_content != content:
+            raise _fixture_error(f"document text differs from JSON for {filename}")
+        filenames.add(filename)
+        documents.append(BenchmarkDocument(document_id, filename, content))
+
+    cases: list[EvaluationCase] = []
+    question_ids: set[str] = set()
+    required_fields = ("question_id", "category", "question", "expected_answer", "required_keywords", "forbidden_keywords", "expected_sources", "expected_relation_path")
+    for raw in raw_questions:
+        if not isinstance(raw, dict) or any(field not in raw for field in required_fields):
+            raise _fixture_error("question misses a required fixed scoring field")
+        question_id = str(raw["question_id"]).strip()
+        category = str(raw["category"]).strip()
+        question = str(raw["question"]).strip()
+        expected_answer = str(raw["expected_answer"]).strip()
+        keywords = raw["required_keywords"]
+        forbidden = raw["forbidden_keywords"]
+        sources = raw["expected_sources"]
+        entities = raw.get("expected_entities", [])
+        if (not question_id or question_id in question_ids or not category or not question or not expected_answer
+                or not all(isinstance(value, list) for value in (keywords, forbidden, sources, entities))):
+            raise _fixture_error("question identity or list field is invalid")
+        normalized_sources = tuple(str(value).strip() for value in sources)
+        if any(source not in filenames for source in normalized_sources):
+            raise _fixture_error(f"question {question_id} references an unknown source")
+        question_ids.add(question_id)
+        cases.append(EvaluationCase(
+            question_id=question_id,
+            question=question,
+            category=category,
+            required_keywords=tuple(str(value).strip() for value in keywords),
+            expected_sources=normalized_sources,
+            forbidden_keywords=tuple(str(value).strip() for value in forbidden),
+            requires_abstention=bool(raw.get("requires_abstention", False)),
+            graph_advantage_expected=str(raw.get("graph_advantage_expected", "none")).lower() not in {"", "none", "false"},
+            offline_entities=tuple(str(value).strip() for value in entities),
+            offline_answer=expected_answer,
+            expected_answer=expected_answer,
+            expected_relation_path=_relation_path(raw["expected_relation_path"]),
+        ))
+    actual_categories: dict[str, int] = {}
+    for case in cases:
+        actual_categories[case.category] = actual_categories.get(case.category, 0) + 1
+    declared_categories = manifest.get("question_categories")
+    if declared_categories is None:
+        declared_categories = questions_payload.get("category_distribution")
+    if not isinstance(declared_categories, dict):
+        raise _fixture_error("fixture misses a category distribution")
+    try:
+        normalized_declared = {str(name): int(count) for name, count in declared_categories.items()}
+    except (TypeError, ValueError) as exc:
+        raise _fixture_error("category distribution is invalid") from exc
+    if normalized_declared != actual_categories:
+        raise _fixture_error("category distribution does not match questions")
+    return EvaluationFixture(
+        name=str(manifest.get("benchmark_name", "evaluation fixture")),
+        version=str(manifest.get("version", "")), documents=tuple(documents), cases=tuple(cases), root=fixture_root,
+    )
+
+
 _OFFLINE_SOURCES = frozenset(source for case in EVALUATION_CASES for source in case.expected_sources)
 
 
@@ -102,6 +245,20 @@ def _nearest_rank(values: list[float], percentile: int) -> float | None:
     ordered = sorted(values)
     index = max(0, math.ceil((percentile / 100) * len(ordered)) - 1)
     return round(ordered[index], 3)
+
+
+def _summary_category(category: str) -> str:
+    """Map historic S4 labels and fixture labels to stable report buckets."""
+    normalized = str(category).strip().casefold()
+    if normalized in {"unanswerable", "abstention"}:
+        return "abstention"
+    if normalized.startswith("distractor"):
+        return "distractor"
+    if normalized.startswith("constraint"):
+        return "constraint"
+    if normalized == "multi_hop":
+        return "multi_hop"
+    return "single_hop" if normalized == "single_hop" else normalized
 
 
 def _counter_value(owner: Any, attribute: str) -> int | None:
@@ -195,7 +352,11 @@ class DeterministicScorerV2:
         graph_participated = graph_context_count > 0
 
         if case.requires_abstention:
-            abstention_marker = next((marker for marker in _ABSTENTION_MARKERS_V2 if marker in answer), None)
+            # A reviewed fixture may define additional finite, answer-safe
+            # abstention expressions (for example "未记录").  They remain
+            # case-owned deterministic rules, not a model-based judgment.
+            abstention_markers = _ABSTENTION_MARKERS_V2 + tuple(case.required_keywords)
+            abstention_marker = next((marker for marker in abstention_markers if marker in answer), None)
             invented_target_fact = cls._abstention_invents_target(case, answer)
             abstention_score = 1.0 if abstention_marker and not invented_target_fact else 0.0
             answer_semantic_score = abstention_score
@@ -244,6 +405,37 @@ class DeterministicScorerV2:
             "graph_participated": graph_participated,
             "graph_participation_pass": graph_participation_pass,
         }
+
+
+def score_relation_fidelity(case: EvaluationCase, contexts: Iterable[Any]) -> dict[str, Any]:
+    """Score exact directed fixture relations against graph evidence in Top-K.
+
+    This is deliberately independent from answer correctness. A final answer
+    may be fluent while its evidence contains a different predicate, such as
+    ``DEPENDS_ON`` instead of ``PROVIDES_INDEX_TO``.
+    """
+    expected = set(case.expected_relation_path)
+    observed: set[tuple[str, str, str, str]] = set()
+    for context in contexts:
+        if getattr(context, "retrieval_type", "") != "graph":
+            continue
+        metadata = getattr(context, "metadata", {}) or {}
+        for edge in metadata.get("graph_evidence", []):
+            if not isinstance(edge, dict):
+                continue
+            direction = str(edge.get("direction", "")).strip()
+            values = tuple(str(edge.get(field, "")).strip() for field in ("subject", "predicate", "object"))
+            if all(values) and direction in {"forward", "reverse"}:
+                observed.add((*values, direction))
+    matched = expected & observed
+    return {
+        "expected_relation_total": len(expected),
+        "matched_relation_count": len(matched),
+        "relation_fidelity_score": round(len(matched) / len(expected), 3) if expected else None,
+        "relation_fidelity_pass": bool(expected) and matched == expected,
+        "expected_relations": sorted("|".join(edge) for edge in expected),
+        "matched_relations": sorted("|".join(edge) for edge in matched),
+    }
 
 
 def _case_by_id(question_id: str) -> EvaluationCase:
@@ -402,6 +594,7 @@ class RAGEvaluationRunner:
             score_v2 = DeterministicScorerV2.score(
                 case, answer=result.answer, sources=sources, mode=mode, graph_context_count=graph_count
             )
+            relation_fidelity = score_relation_fidelity(case, result.contexts)
             return {
                 "run_id": plan.run_id,
                 "mode": mode.value,
@@ -423,6 +616,8 @@ class RAGEvaluationRunner:
                 ),
                 "deterministic_score": score,
                 "deterministic_score_v2": score_v2,
+                "relation_fidelity": relation_fidelity,
+                "forbidden_fact_violation": bool(score["forbidden_keyword_hits"]),
                 "failure_summary": None,
             }
         except Exception as exc:
@@ -436,6 +631,7 @@ class RAGEvaluationRunner:
                 "scope_verified": self.scope.is_verified(),
                 "model_call_counts": self._call_counts(plan_before, plan_after, chat_before, vector_before, embedding_before, graph_before),
                 "deterministic_score": None, "deterministic_score_v2": None,
+                "relation_fidelity": None, "forbidden_fact_violation": None,
                 "failure_summary": type(exc).__name__,
             }
 
@@ -471,15 +667,29 @@ class RAGEvaluationRunner:
     @staticmethod
     def _summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         summary: dict[str, Any] = {}
+        categories = ("single_hop", "multi_hop", "constraint", "distractor", "abstention")
         for mode in sorted({result["mode"] for result in results}):
             rows = [result for result in results if result["mode"] == mode]
             successful = [row for row in rows if row["success"]]
             correct = [row for row in successful if row.get("deterministic_score", {}).get("question_correct")]
             correct_v2 = [row for row in successful if row.get("deterministic_score_v2", {}).get("question_correct_v2")]
             multi_hop = [row for row in successful if "multi_hop" in row["category"]]
-            abstentions = [row for row in successful if row["category"] == "unanswerable"]
-            graph_rows = [row for row in successful if row["graph_context_count"] > 0]
+            abstentions = [row for row in successful if row["category"] in {"unanswerable", "abstention"}]
+            graph_called = [row for row in successful if int(row.get("model_call_counts", {}).get("graph_calls") or 0) > 0]
+            graph_top_k = [row for row in successful if row["graph_context_count"] > 0]
             latencies = [float(row["latency_ms"]) for row in successful]
+            category_breakdown: dict[str, dict[str, Any]] = {}
+            for category in categories:
+                category_rows = [row for row in rows if _summary_category(row["category"]) == category]
+                category_correct = [row for row in category_rows if row.get("deterministic_score_v2", {}).get("question_correct_v2")]
+                category_breakdown[category] = {
+                    "correct": len(category_correct), "total": len(category_rows),
+                    "accuracy": round(len(category_correct) / len(category_rows), 3) if category_rows else None,
+                }
+            plan_calls = {
+                row["question_id"]: int(row.get("model_call_counts", {}).get("shared_preprocess_chat") or 0)
+                for row in rows
+            }
             summary[mode] = {
                 "questions": len(rows),
                 "success_rate": round(len(successful) / len(rows), 3) if rows else 0.0,
@@ -491,13 +701,29 @@ class RAGEvaluationRunner:
                 "keyword_fact_hit_rate": round(
                     statistics.fmean(row["deterministic_score"]["keyword_fact_score"] for row in successful), 3
                 ) if successful else 0.0,
+                "required_fact_hit_rate": round(
+                    statistics.fmean(row["deterministic_score"]["keyword_fact_score"] for row in successful), 3
+                ) if successful else 0.0,
                 "source_hit_rate": round(sum(bool(row["deterministic_score"]["source_hit"]) for row in successful) / len(rows), 3) if rows else 0.0,
+                "source_coverage": round(
+                    statistics.fmean(row["deterministic_score_v2"]["source_coverage_score"] for row in successful), 3
+                ) if successful else 0.0,
                 "multi_hop_accuracy": round(sum(bool(row["deterministic_score"]["question_correct"]) for row in multi_hop) / len(multi_hop), 3) if multi_hop else None,
                 "abstention_accuracy": round(sum(bool(row["deterministic_score"]["abstention_correct"]) for row in abstentions) / len(abstentions), 3) if abstentions else None,
-                "graph_participation_rate": round(len(graph_rows) / len(rows), 3) if mode == RetrievalMode.GRAPH_RAG.value and rows else None,
+                "relation_fidelity": round(statistics.fmean(
+                    row["relation_fidelity"]["relation_fidelity_score"]
+                    for row in successful if row.get("relation_fidelity", {}).get("relation_fidelity_score") is not None
+                ), 3) if any(row.get("relation_fidelity", {}).get("relation_fidelity_score") is not None for row in successful) else None,
+                "forbidden_fact_violation_rate": round(sum(bool(row.get("forbidden_fact_violation")) for row in successful) / len(rows), 3) if rows else 0.0,
+                "graph_participation_rate": round(len(graph_called) / len(rows), 3) if mode == RetrievalMode.GRAPH_RAG.value and rows else None,
+                "graph_evidence_entering_top_k_rate": round(len(graph_top_k) / len(rows), 3) if mode == RetrievalMode.GRAPH_RAG.value and rows else None,
                 "latency_avg_ms": round(statistics.fmean(latencies), 3) if latencies else None,
                 "latency_p50_ms": _nearest_rank(latencies, 50),
                 "latency_p95_ms": _nearest_rank(latencies, 95),
+                "chat_logical_calls": sum(plan_calls.values()) + sum(int(row.get("model_call_counts", {}).get("answer_chat") or 0) for row in rows),
+                "embedding_logical_calls": sum(int(row.get("model_call_counts", {}).get("embedding_query") or 0) for row in rows),
+                "neo4j_logical_calls": sum(int(row.get("model_call_counts", {}).get("graph_calls") or 0) for row in rows),
+                "categories": category_breakdown,
             }
         return summary
 
@@ -509,7 +735,7 @@ class RAGEvaluationRunner:
             "run_id", "mode", "question_id", "category", "success", "http_status", "latency_ms",
             "answer", "sources", "vector_context_count", "graph_context_count", "allowed_document_ids_count",
             "vector_scope_rejected_count", "graph_scope_rejected_count", "scope_verified", "model_call_counts",
-            "deterministic_score", "deterministic_score_v2", "failure_summary",
+            "deterministic_score", "deterministic_score_v2", "relation_fidelity", "forbidden_fact_violation", "failure_summary",
         ]
         temporary = output_dir / "results.csv.tmp"
         with temporary.open("w", newline="", encoding="utf-8") as stream:
@@ -517,7 +743,7 @@ class RAGEvaluationRunner:
             writer.writeheader()
             for result in payload["results"]:
                 row = dict(result)
-                for name in ("sources", "model_call_counts", "deterministic_score", "deterministic_score_v2"):
+                for name in ("sources", "model_call_counts", "deterministic_score", "deterministic_score_v2", "relation_fidelity"):
                     row[name] = json.dumps(row[name], ensure_ascii=False, sort_keys=True)
                 writer.writerow(row)
         os.replace(temporary, output_dir / "results.csv")
@@ -555,7 +781,9 @@ class OfflineChatProvider:
         if "查询改写专家" in prompt and case:
             return _OfflineMessage(json.dumps({"queries": [case.question], "entities": list(case.offline_entities)}, ensure_ascii=False))
         self.final_prompts.append(prompt)
-        return _OfflineMessage(case.offline_answer if case else "资料未提供，无法回答。")
+        if case:
+            return _OfflineMessage(case.offline_answer or case.expected_answer or "资料未提供，无法回答。")
+        return _OfflineMessage("资料未提供，无法回答。")
 
 
 class OfflineVectorStore:
@@ -612,11 +840,27 @@ class OfflineKnowledgeGraph:
     """In-memory fake graph interface; no driver, URI, or database is created."""
 
     def __init__(self, cases: Iterable[EvaluationCase]) -> None:
+        case_list = tuple(cases)
         self.entity_source = {
             entity: case.expected_sources[0]
-            for case in cases if case.expected_sources
+            for case in case_list if case.expected_sources
             for entity in case.offline_entities
         }
+        self.evidence_by_entity: dict[str, list[dict[str, Any]]] = {}
+        for case in case_list:
+            if not case.expected_sources:
+                continue
+            source = case.expected_sources[0]
+            document_id = offline_document_id(source)
+            for index, (subject, predicate, target, direction) in enumerate(case.expected_relation_path):
+                edge = {
+                    "subject": subject, "predicate": predicate, "object": target,
+                    "direction": direction, "document_id": document_id,
+                    "document_version": 1, "source": source,
+                    "evidence_key": f"offline-{document_id[:8]}-{case.question_id}-{index}",
+                }
+                self.evidence_by_entity.setdefault(subject, []).append(edge)
+                self.evidence_by_entity.setdefault(target, []).append(edge)
         self.calls = 0
 
     @staticmethod
@@ -633,9 +877,27 @@ class OfflineKnowledgeGraph:
     ) -> list[dict[str, Any]]:
         del hops, allowed_document_ids, scope_diagnostics
         self.calls += 1
+        edges = self.evidence_by_entity.get(entity_name, [])
         source = self.entity_source.get(entity_name)
-        if not source:
+        if not source and not edges:
             return []
+        if edges:
+            return [{
+                "source": edge["subject"], "relations": [edge["predicate"]], "target": edge["object"],
+                "target_type": "Concept", "target_desc": "offline fixture evidence",
+                "evidence_edges": [edge],
+            } for edge in edges] + [{
+                "source": entity_name, "relations": ["RELATED_TO"], "target": "foreign",
+                "target_type": "Concept", "target_desc": "foreign evidence",
+                "evidence_edges": [{
+                    "subject": entity_name, "predicate": "RELATED_TO", "object": "foreign",
+                    "direction": "forward", "document_id": str(uuid5(NAMESPACE_URL, "foreign-graph")),
+                    "document_version": 1, "source": "foreign.txt", "evidence_key": "foreign-evidence",
+                }],
+            }, {
+                "source": entity_name, "relations": ["RELATED_TO"], "target": "legacy",
+                "target_type": "Concept", "target_desc": "legacy evidence", "evidence_edges": [],
+            }]
         document_id = offline_document_id(source)
         return [{
             "source": entity_name, "relations": ["RELATED_TO"], "target": "synthetic",
@@ -659,12 +921,16 @@ class OfflineKnowledgeGraph:
         }]
 
 
-def build_offline_runner(run_id: str = "offline-fixture") -> RAGEvaluationRunner:
+def build_offline_runner(
+    run_id: str = "offline-fixture", *, fixture: EvaluationFixture | None = None,
+) -> RAGEvaluationRunner:
     """Construct a fake-only runner without importing configuration or providers."""
-    cases = EVALUATION_CASES
+    cases = fixture.cases if fixture else EVALUATION_CASES
     embeddings = OfflineEmbeddingProvider()
     scope = EvaluationScope.from_uploaded_document_ids(
-        run_id, (offline_document_id(source) for source in _OFFLINE_SOURCES)
+        run_id,
+        (offline_document_id(document.filename) for document in fixture.documents)
+        if fixture else (offline_document_id(source) for source in _OFFLINE_SOURCES),
     )
     return RAGEvaluationRunner(
         QAAgent(
@@ -678,5 +944,8 @@ def build_offline_runner(run_id: str = "offline-fixture") -> RAGEvaluationRunner
     )
 
 
-def run_offline_sync(run_id: str, modes: Iterable[RetrievalMode | str], output_root: str | Path) -> dict[str, Any]:
-    return asyncio.run(build_offline_runner(run_id).run(run_id=run_id, modes=modes, output_root=output_root))
+def run_offline_sync(
+    run_id: str, modes: Iterable[RetrievalMode | str], output_root: str | Path,
+    *, fixture: EvaluationFixture | None = None,
+) -> dict[str, Any]:
+    return asyncio.run(build_offline_runner(run_id, fixture=fixture).run(run_id=run_id, modes=modes, output_root=output_root))

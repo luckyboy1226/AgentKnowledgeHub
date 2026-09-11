@@ -172,3 +172,31 @@ edge 的 record 会在进入 prompt 前被拒绝。普通未 scoped 的 API 查�
 评测 prompt 使用固定三元组模板，严格按已存 predicate 陈述；它不会将 `PROVIDES_INDEX` 改写为
 `DEPENDS_ON`，也不会在缺少直接 edge 时补造关系。评测路径还移除了固定的 graph `1.2` 倍加权，
 让 provenance-complete graph context 与 vector context 按原始分数竞争；未引入题目或答案硬编码。
+
+## Enterprise 20-document / 60-question fixture runner
+
+评测 runner 同时支持历史 S4 的 4 文档/12 题基线和任意已审核的不可变 fixture。通过显式
+`--benchmark-dir <fixture-root>` 读取 `benchmark_manifest.json`、`benchmark_documents.json`、
+`benchmark_questions.json` 与 `documents/*.txt`；加载时校验 manifest 计数、问题来源、关系路径，
+并逐字校验 JSON 中的文档正文与对应 `.txt` 文件一致。缺失、篡改或不一致时 fail closed，不会
+启动真实评测。
+
+默认 fixture 根目录为 `benchmarks/enterprise_20docs_60q/`；离线验证命令为：
+
+```powershell
+python scripts/run-rag-eval.py --offline --mode both
+```
+
+可通过 `--benchmark-dir <fixture-root>` 显式选择另一份已审核 fixture；`--s4-baseline` 仅用于复现
+历史的内置 4 文档/12 题 S4 基线。
+
+fixture 的文档数和题目数完全由 JSON 驱动；runner 不假定 4 份文档、12 道题或 24 条结果。
+每个模式分别按 `single_hop`、`multi_hop`、`constraint`、`distractor`、`abstention` 统计
+`correct / N` 和 accuracy，并报告 required-fact hit、source coverage、abstention accuracy、
+directed relation fidelity、forbidden-fact violation、graph participation、graph evidence 进入最终
+Top-K、平均/P50/P95 耗时，以及 Chat、Embedding、Neo4j 的逻辑调用数。关系保真独立于回答评分：
+`北极星 --PROVIDES_INDEX_TO--> 天枢` 不会因谓词不同的 `DEPENDS_ON` 被判为匹配。
+
+`--offline` 仅使用 fake provider/store/graph，输出仍写入被忽略的
+`.runtime/evaluation/<run_id>/`。真实模式仍需要单独授权、实际上传得到的 UUID allowlist，且清理
+循环仅处理本轮实际创建的 document IDs；该命令不会把 fixture 内容或结果加入 Git。

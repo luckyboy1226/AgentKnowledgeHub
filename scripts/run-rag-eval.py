@@ -36,13 +36,15 @@ from providers.factory import create_chat_provider, create_embedding_provider  #
 from services.evaluation_scope import EvaluationScope  # noqa: E402
 from services.knowledge_graph import KnowledgeGraphService  # noqa: E402
 from services.rag_evaluation import (  # noqa: E402
-    RAGEvaluationRunner, SYNTHETIC_DOCUMENTS, atomic_json, rescore_payload_v2,
-    run_offline_sync, write_rescore_reports,
+    BenchmarkDocument, EvaluationFixture, RAGEvaluationRunner, SYNTHETIC_DOCUMENTS,
+    atomic_json, load_evaluation_fixture, rescore_payload_v2, run_offline_sync,
+    write_rescore_reports,
 )
 from services.vector_store import VectorStoreService  # noqa: E402
 
 
 API_BASE_URL = "http://127.0.0.1:8080"
+DEFAULT_ENTERPRISE_BENCHMARK_DIR = PROJECT_ROOT / "benchmarks" / "enterprise_20docs_60q"
 
 
 def _parse_modes(value: str) -> tuple[RetrievalMode, ...]:
@@ -151,7 +153,17 @@ async def _build_real_runner(scope: EvaluationScope):
     return runner, vectors, graph, chat, embeddings
 
 
-async def _run_real(run_id: str) -> int:
+def exact_cleanup_document_ids(created: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return only exact upload IDs; this stays generic for any fixture size."""
+    document_ids = tuple(str(item.get("document_id") or "") for item in created)
+    if not document_ids or any(not document_id for document_id in document_ids):
+        raise ValueError("exact cleanup requires non-empty uploaded document IDs")
+    if len(set(document_ids)) != len(document_ids):
+        raise ValueError("exact cleanup refuses duplicate document IDs")
+    return document_ids
+
+
+async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> int:
     output_dir = PROJECT_ROOT / ".runtime" / "evaluation" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata: dict[str, Any] = {"run_id": run_id, "mode": "authorized_real_s4", "started_at_utc": datetime.now(UTC).isoformat(), "uploaded_documents": [], "operations": [], "scope_verified": False, "cleanup": []}
@@ -169,7 +181,12 @@ async def _run_real(run_id: str) -> int:
         metadata["baseline"] = {"vector_total": stats.get("vector_store", {}).get("total_vectors"), "graph_entities": stats.get("knowledge_graph", {}).get("total_entities"), "graph_relations": stats.get("knowledge_graph", {}).get("total_relations"), "existing_document_count": len(docs.get("items", docs if isinstance(docs, list) else []))}
         atomic_json(output_dir / "safe-run-metadata.json", metadata)
 
-        for name, filename, text in SYNTHETIC_DOCUMENTS:
+        documents = fixture.documents if fixture else tuple(
+            BenchmarkDocument(name, filename, text) for name, filename, text in SYNTHETIC_DOCUMENTS
+        )
+        cases = fixture.cases if fixture else None
+        for document in documents:
+            name, filename, text = document.document_id, document.filename, document.content
             logical_key = f"s4-eval-{run_id}-{name}"
             status, body, elapsed = await _api_json(client, "POST", "/api/documents", data={"namespace": "default", "logical_key": logical_key}, files={"file": (filename, text.encode("utf-8"), "text/plain")})
             record = {"name": name, "logical_key": logical_key, "http_status": status, "elapsed_ms": elapsed, "operation_id": body.get("operation_id"), "document_id": body.get("document_id"), "version": body.get("version"), "content_hash": body.get("content_hash"), "status": body.get("status"), "error_summary": body.get("detail") if status >= 400 else None}
@@ -191,9 +208,9 @@ async def _run_real(run_id: str) -> int:
             created.append(record)
             atomic_json(output_dir / "safe-run-metadata.json", metadata)
 
-        if len(created) == len(SYNTHETIC_DOCUMENTS) and not metadata.get("error_summary"):
+        if len(created) == len(documents) and not metadata.get("error_summary"):
             scope = EvaluationScope.from_uploaded_document_ids(run_id, [item["document_id"] for item in created])
-            if not scope.is_verified() or len(scope.allowed_document_ids) != 4:
+            if not scope.is_verified() or len(scope.allowed_document_ids) != len(documents):
                 metadata["error_summary"] = "scope_verification_failed"
             else:
                 metadata["scope_verified"], metadata["allowed_document_ids_count"] = True, len(scope.allowed_document_ids)
@@ -201,11 +218,13 @@ async def _run_real(run_id: str) -> int:
                 graph: KnowledgeGraphService | None = None
                 try:
                     runner, _, graph, chat, embeddings = await _build_real_runner(scope)
+                    if cases is not None:
+                        runner = RAGEvaluationRunner(runner.agent, cases, scope=scope, offline=False)
                     payload = await runner.run(run_id=run_id, modes=("vector_only", "graph_rag"), output_root=output_dir.parent)
                     all_sources_scoped = all(source.get("document_id") in scope.allowed_document_ids for row in payload["results"] for source in row["sources"])
                     vector_only_graph_calls = sum(int(row.get("model_call_counts", {}).get("graph_calls") or 0) for row in payload["results"] if row["mode"] == "vector_only")
                     metadata["evaluation"] = {"results_count": len(payload["results"]), "all_sources_scoped": all_sources_scoped, "vector_only_graph_calls": vector_only_graph_calls, "chat_logical_calls": chat.call_count, "embedding_query_logical_calls": embeddings.query_calls, "chat_retry_observability": "SDK-internal retries are not externally observable"}
-                    success = len(payload["results"]) == 24 and all_sources_scoped and vector_only_graph_calls == 0
+                    success = len(payload["results"]) == len(cases or runner.cases) * 2 and all_sources_scoped and vector_only_graph_calls == 0
                     if not success:
                         metadata["error_summary"] = "evaluation_scope_or_coverage_failed"
                 except Exception as exc:
@@ -215,8 +234,7 @@ async def _run_real(run_id: str) -> int:
                         await graph.close()
                 atomic_json(output_dir / "safe-run-metadata.json", metadata)
 
-        for record in created:
-            document_id = record["document_id"]
+        for document_id in exact_cleanup_document_ids(created) if created else ():
             status, body, elapsed = await _api_json(client, "DELETE", f"/api/documents/{document_id}")
             cleanup = {"document_id": document_id, "http_status": status, "elapsed_ms": elapsed, "operation_id": body.get("operation_id"), "status": body.get("status")}
             if status < 200 or status >= 300 or not cleanup["operation_id"]:
@@ -291,10 +309,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--real", action="store_true")
     parser.add_argument("--authorized-s4", action="store_true")
     parser.add_argument("--rescore", metavar="RESULTS_JSON")
+    parser.add_argument("--benchmark-dir", metavar="DIR", help="read a reviewed, immutable benchmark fixture from DIR")
+    parser.add_argument("--s4-baseline", action="store_true", help="use the historic built-in 4-document S4 fixture")
     parser.add_argument("--run-id")
     args = parser.parse_args(argv)
     if args.rescore:
-        if args.offline or args.real or args.authorized_s4 or args.run_id:
+        if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.s4_baseline:
             parser.error("--rescore cannot be combined with evaluation execution options")
         return _rescore_v2(args.rescore)
     if not args.offline and not args.real:
@@ -303,10 +323,23 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("choose exactly one of --offline or --real")
     if args.real and not args.authorized_s4:
         parser.error("real evaluation is refused without --authorized-s4")
+    if args.s4_baseline and args.benchmark_dir:
+        parser.error("--s4-baseline cannot be combined with --benchmark-dir")
     run_id = args.run_id or f"s4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    fixture: EvaluationFixture | None = None
+    if not args.s4_baseline:
+        supplied = Path(args.benchmark_dir) if args.benchmark_dir else DEFAULT_ENTERPRISE_BENCHMARK_DIR
+        fixture_root = supplied if supplied.is_absolute() else PROJECT_ROOT / supplied
+        try:
+            fixture = load_evaluation_fixture(fixture_root)
+        except (OSError, ValueError) as exc:
+            print(f"benchmark fixture validation failed safely: {_safe_error(exc)}", file=sys.stderr)
+            return 1
     if args.offline:
         try:
-            payload = run_offline_sync(run_id, _parse_modes(args.mode), PROJECT_ROOT / ".runtime" / "evaluation")
+            payload = run_offline_sync(
+                run_id, _parse_modes(args.mode), PROJECT_ROOT / ".runtime" / "evaluation", fixture=fixture,
+            )
         except (ValueError, OSError) as exc:
             print(f"offline evaluation failed safely: {_safe_error(exc)}", file=sys.stderr)
             return 1
@@ -314,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         for mode, summary in payload["summary"].items():
             print(f"{mode}: questions={summary['questions']} accuracy={summary['question_accuracy']:.3f}")
         return 0
-    return asyncio.run(_run_real(run_id))
+    return asyncio.run(_run_real(run_id, fixture))
 
 
 if __name__ == "__main__":

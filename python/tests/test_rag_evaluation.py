@@ -305,9 +305,9 @@ def test_real_cli_mode_is_explicitly_refused(capsys):
 def test_offline_cli_uses_only_safe_run_identifier(tmp_path, monkeypatch):
     module = _load_cli_module()
     monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
-    assert module.main(["--offline", "--mode", "vector_only", "--run-id", "cli-safe"]) == 0
+    assert module.main(["--offline", "--s4-baseline", "--mode", "vector_only", "--run-id", "cli-safe"]) == 0
     assert (tmp_path / ".runtime" / "evaluation" / "cli-safe" / "results.json").exists()
-    assert module.main(["--offline", "--run-id", "../unsafe"]) == 1
+    assert module.main(["--offline", "--s4-baseline", "--run-id", "../unsafe"]) == 1
 
 
 def test_rescore_cli_creates_a_score_only_derived_report(tmp_path, monkeypatch):

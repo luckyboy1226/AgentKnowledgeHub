@@ -702,6 +702,20 @@ Docker volumes 不会被启动或停止脚本删除；不要使用 `docker compo
 
 已在本地 core 环境真实验证：文档入库、Chroma 向量写入与检索、Neo4j 实体关系、vector QA、sources、GraphRAG，以及 Mongo checkpoint 写入、续写和 API 重启后的同一会话请求。QA 通常需要约 60–90 秒，不适合直接暴露到公网。`aget_tuple` 的 request-scoped 读取观测日志尚未完成验证；这是可观测性技术债，不应被表述为已证明的 checkpoint 读取证据。
 
+### GraphRAG 对照评测
+
+企业级 benchmark fixture 位于 `benchmarks/enterprise_20docs_60q/`，包含 20 份固定合成文档和
+60 道固定问题；fixture 是评测输入，不应为提高任一模式分数而修改。默认离线 runner 会加载它：
+
+```powershell
+conda run -n kghub python scripts/run-rag-eval.py --offline --mode both
+```
+
+结果仅写入被 Git 忽略的 `.runtime/evaluation/<run_id>/`。离线运行只使用 fake Chat、Embedding、
+VectorStore 和 KnowledgeGraph，不能证明真实模型质量。历史 S4 4 文档/12 题基线可显式使用
+`--s4-baseline`。真实 benchmark 必须单独获得授权，使用上传后得到的 UUID allowlist，并在结束后
+仅按本轮实际 document IDs 精确清理。
+
 ---
 
 ## ❓ 常见问题 FAQ
