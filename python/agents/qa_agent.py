@@ -21,6 +21,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from config import settings
 from providers.chat import ChatProvider
+from services.evaluation_scope import EvaluationScope, require_verified_scope
 from services.memory_models import MemoryEvent, Personality, UserProfile
 
 
@@ -30,6 +31,26 @@ class QueryIntent(str, Enum):
     COMPARATIVE = "comparative"   # 对比型问题
     PROCEDURAL = "procedural"     # 流程型问题
     EXPLORATORY = "exploratory"   # 探索型问题
+
+
+class RetrievalMode(str, Enum):
+    """Internal retrieval modes reserved for the S4 evaluation runner."""
+
+    VECTOR_ONLY = "vector_only"
+    GRAPH_RAG = "graph_rag"
+
+
+@dataclass(frozen=True)
+class EvaluationQueryPlan:
+    """One shared preprocessing result for a pair of evaluation answers."""
+
+    question: str
+    normalized_query: str
+    entities: tuple[str, ...]
+    intent: QueryIntent
+    top_k: int
+    run_id: str
+    question_id: str
 
 
 @dataclass
@@ -49,6 +70,7 @@ class QAResult:
     intent: QueryIntent
     confidence: float
     reasoning_steps: list[str] = field(default_factory=list)
+    scope_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 INTENT_PROMPT = """\
@@ -196,6 +218,86 @@ class QAAgent:
             reasoning_steps=reasoning,
         )
 
+    async def build_evaluation_query_plan(
+        self,
+        question: str,
+        *,
+        run_id: str,
+        question_id: str,
+        top_k: int = 5,
+    ) -> EvaluationQueryPlan:
+        """Create a reusable evaluation plan without changing API session behavior."""
+        if top_k < 1:
+            raise ValueError("Evaluation top_k must be positive")
+        intent = await self._classify_intent(question)
+        rewritten = await self._rewrite_query(question)
+        queries = [str(value).strip() for value in rewritten.get("queries", []) if str(value).strip()]
+        entities = tuple(
+            dict.fromkeys(
+                str(value).strip() for value in rewritten.get("entities", []) if str(value).strip()
+            )
+        )
+        return EvaluationQueryPlan(
+            question=question,
+            normalized_query=queries[0] if queries else question,
+            entities=entities,
+            intent=intent,
+            top_k=int(top_k),
+            run_id=str(run_id),
+            question_id=str(question_id),
+        )
+
+    async def answer_with_evaluation_plan(
+        self,
+        plan: EvaluationQueryPlan,
+        mode: RetrievalMode | str,
+        *,
+        scope: EvaluationScope | None = None,
+    ) -> QAResult:
+        """Evaluate a plan without memory or checkpoint state.
+
+        The graph branch is never entered in ``vector_only`` mode; this is
+        stronger than retrieving graph facts and discarding them later.
+        """
+        selected_mode = RetrievalMode(mode)
+        if self.memory_service is not None:
+            raise ValueError("Evaluation requires a memoryless QAAgent")
+        verified_scope = require_verified_scope(scope)
+        diagnostics = {
+            "allowed_document_ids_count": len(verified_scope.allowed_document_ids),
+            "vector_scope_rejected_count": 0,
+            "graph_scope_rejected_count": 0,
+            "scope_verified": True,
+        }
+
+        vector_contexts = await self._vector_retrieve_queries(
+            [plan.normalized_query],
+            plan.top_k,
+            allowed_document_ids=verified_scope.allowed_document_ids,
+            scope_diagnostics=diagnostics,
+        )
+        graph_contexts: list[RetrievedContext] = []
+        if selected_mode is RetrievalMode.GRAPH_RAG:
+            graph_contexts = await self._graph_retrieve(
+                plan.question,
+                {"entities": list(plan.entities)},
+                allowed_document_ids=verified_scope.allowed_document_ids,
+                scope_diagnostics=diagnostics,
+            )
+        top_contexts = self._hybrid_rerank(vector_contexts + graph_contexts)[:8]
+        answer_text, reasoning = await self._generate_answer(
+            plan.question, top_contexts, plan.intent
+        )
+        return QAResult(
+            question=plan.question,
+            answer=answer_text,
+            contexts=top_contexts,
+            intent=plan.intent,
+            confidence=self._calc_confidence(top_contexts),
+            reasoning_steps=reasoning,
+            scope_diagnostics=diagnostics,
+        )
+
     # ── memory management ────────────────────────────────────
 
     async def _store_memory(self, user_input: str, agent_response: str):
@@ -267,25 +369,60 @@ class QAAgent:
     # ── vector retrieval ─────────────────────────────────────
 
     async def _vector_retrieve(self, rewritten: dict) -> list[RetrievedContext]:
+        return await self._vector_retrieve_queries(rewritten.get("queries", []), top_k=5)
+
+    async def _vector_retrieve_queries(
+        self,
+        queries: list[str],
+        top_k: int,
+        *,
+        allowed_document_ids: frozenset[str] | None = None,
+        scope_diagnostics: dict[str, int] | None = None,
+    ) -> list[RetrievedContext]:
         if not self.vector_store:
             return []
 
         contexts: list[RetrievedContext] = []
-        for query in rewritten.get("queries", []):
-            results = await self.vector_store.search(query, top_k=5)
+        for query in queries:
+            if allowed_document_ids is None:
+                results = await self.vector_store.search(query, top_k=top_k)
+            else:
+                results = await self.vector_store.search(
+                    query,
+                    top_k=top_k,
+                    allowed_document_ids=allowed_document_ids,
+                    scope_diagnostics=scope_diagnostics,
+                )
             for doc, score in results:
+                metadata = dict(doc.get("metadata") or {})
+                if allowed_document_ids is not None and (
+                    str(metadata.get("document_id")) not in allowed_document_ids
+                    or not isinstance(metadata.get("document_version"), int)
+                ):
+                    if scope_diagnostics is not None:
+                        scope_diagnostics["vector_scope_rejected_count"] = (
+                            scope_diagnostics.get("vector_scope_rejected_count", 0) + 1
+                        )
+                    continue
                 contexts.append(RetrievedContext(
                     content=doc.get("content", ""),
                     source=doc.get("source", "vector_store"),
                     score=score,
                     retrieval_type="vector",
-                    metadata=doc.get("metadata", {}),
+                    metadata=metadata,
                 ))
         return contexts
 
     # ── graph retrieval ──────────────────────────────────────
 
-    async def _graph_retrieve(self, question: str, rewritten: dict) -> list[RetrievedContext]:
+    async def _graph_retrieve(
+        self,
+        question: str,
+        rewritten: dict,
+        *,
+        allowed_document_ids: frozenset[str] | None = None,
+        scope_diagnostics: dict[str, int] | None = None,
+    ) -> list[RetrievedContext]:
         """Retrieve graph facts through the provenance-aware service API.
 
         The previous model-generated Cypher path could not enforce the S3
@@ -300,8 +437,25 @@ class QAAgent:
         contexts: list[RetrievedContext] = []
         for entity_name in entities[:10]:
             try:
-                records = await self.knowledge_graph.get_neighbors(entity_name, hops=2)
+                if allowed_document_ids is None:
+                    records = await self.knowledge_graph.get_neighbors(entity_name, hops=2)
+                else:
+                    records = await self.knowledge_graph.get_neighbors(
+                        entity_name,
+                        hops=2,
+                        allowed_document_ids=allowed_document_ids,
+                        scope_diagnostics=scope_diagnostics,
+                    )
                 for record in records:
+                    if allowed_document_ids is not None and (
+                        str(record.get("document_id")) not in allowed_document_ids
+                        or not isinstance(record.get("document_version"), int)
+                    ):
+                        if scope_diagnostics is not None:
+                            scope_diagnostics["graph_scope_rejected_count"] = (
+                                scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
+                            )
+                        continue
                     source = self.knowledge_graph.safe_source(record.get("provenance_source", ""))
                     contexts.append(RetrievedContext(
                         content=str(record),

@@ -300,7 +300,21 @@ class VectorStoreService:
             return True
         return metadata.get("is_current") is True and metadata.get("status") == "ready"
 
-    async def search(self, query: str, top_k: int = 5) -> list[tuple[dict, float]]:
+    @staticmethod
+    def _in_evaluation_scope(metadata: dict[str, Any], allowed_document_ids: frozenset[str]) -> bool:
+        """Scoped evaluation never treats legacy/missing provenance as eligible."""
+        document_id = metadata.get("document_id")
+        version = metadata.get("document_version")
+        return str(document_id) in allowed_document_ids and isinstance(version, int) and version >= 1
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        allowed_document_ids: frozenset[str] | None = None,
+        scope_diagnostics: dict[str, int] | None = None,
+    ) -> list[tuple[dict, float]]:
         """Search current S3 rows plus legacy rows, with bounded compatibility over-fetch."""
         if top_k <= 0:
             return []
@@ -325,6 +339,14 @@ class VectorStoreService:
                 metadata = dict(metadata or {})
                 if not self._is_retrievable(metadata):
                     continue
+                if allowed_document_ids is not None and not self._in_evaluation_scope(
+                    metadata, allowed_document_ids
+                ):
+                    if scope_diagnostics is not None:
+                        scope_diagnostics["vector_scope_rejected_count"] = (
+                            scope_diagnostics.get("vector_scope_rejected_count", 0) + 1
+                        )
+                    continue
                 metadata["source"] = self.safe_source(metadata.get("source", ""))
                 out.append(
                     (
@@ -341,7 +363,7 @@ class VectorStoreService:
             return out
 
         results = await self._store.asimilarity_search_with_score(query, k=top_k)
-        return [
+        output = [
             (
                 {
                     "content": doc.page_content,
@@ -352,6 +374,21 @@ class VectorStoreService:
             )
             for doc, score in results
         ]
+        if allowed_document_ids is None:
+            return output
+        scoped_output: list[tuple[dict, float]] = []
+        for record, score in output:
+            metadata = dict(record.get("metadata") or {})
+            if not self._in_evaluation_scope(metadata, allowed_document_ids):
+                if scope_diagnostics is not None:
+                    scope_diagnostics["vector_scope_rejected_count"] = (
+                        scope_diagnostics.get("vector_scope_rejected_count", 0) + 1
+                    )
+                continue
+            scoped_output.append((record, score))
+            if len(scoped_output) == top_k:
+                break
+        return scoped_output
 
     async def get_stats(self) -> dict:
         """Return a small datastore health/statistics payload."""

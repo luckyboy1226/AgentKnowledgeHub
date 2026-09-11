@@ -431,10 +431,38 @@ class KnowledgeGraphService:
             f"({variable}.is_current = true AND {variable}.status = 'ready'))"
         )
 
-    async def get_neighbors(self, entity_name: str, hops: int = 2) -> list[dict]:
-        """Retrieve only current provenance facts plus legacy facts without provenance."""
+    @staticmethod
+    def _in_evaluation_scope(record: dict[str, Any], allowed_document_ids: frozenset[str]) -> bool:
+        """Scoped graph reads require explicit provenance, never legacy facts."""
+        document_id = record.get("document_id")
+        version = record.get("document_version")
+        return str(document_id) in allowed_document_ids and isinstance(version, int) and version >= 1
+
+    async def get_neighbors(
+        self,
+        entity_name: str,
+        hops: int = 2,
+        *,
+        allowed_document_ids: frozenset[str] | None = None,
+        scope_diagnostics: dict[str, int] | None = None,
+    ) -> list[dict]:
+        """Retrieve current/legacy facts, or only exact provenance for scoped evaluation."""
         safe_hops = min(max(int(hops), 1), 5)
-        relationship_filter = self._current_or_legacy_relationship_filter("rel")
+        if allowed_document_ids is None:
+            relationship_filter = self._current_or_legacy_relationship_filter("rel")
+            parameters: dict[str, Any] = {"name": entity_name, "limit": 50}
+        else:
+            # This parameterized condition applies to every hop: empty and
+            # legacy provenance cannot satisfy it and there is no full-graph fallback.
+            relationship_filter = (
+                "type(rel) <> 'MENTIONS' AND rel.document_id IN $allowed_document_ids AND "
+                "rel.is_current = true AND rel.status = 'ready'"
+            )
+            parameters = {
+                "name": entity_name,
+                "limit": 50,
+                "allowed_document_ids": sorted(allowed_document_ids),
+            }
         cypher = f"""
         MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
         WHERE ALL(rel IN rels WHERE {relationship_filter})
@@ -446,7 +474,19 @@ class KnowledgeGraphService:
           head([rel IN rels WHERE rel.document_id IS NOT NULL | rel.source]) AS provenance_source
         LIMIT $limit
         """
-        return await self.execute_cypher(cypher, {"name": entity_name, "limit": 50})
+        records = await self.execute_cypher(cypher, parameters)
+        if allowed_document_ids is None:
+            return records
+        scoped_records: list[dict] = []
+        for record in records:
+            if not self._in_evaluation_scope(record, allowed_document_ids):
+                if scope_diagnostics is not None:
+                    scope_diagnostics["graph_scope_rejected_count"] = (
+                        scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
+                    )
+                continue
+            scoped_records.append(record)
+        return scoped_records
 
     async def get_current_paths(self, name_a: str, name_b: str, limit: int = 3) -> list[dict]:
         relationship_filter = self._current_or_legacy_relationship_filter("rel")

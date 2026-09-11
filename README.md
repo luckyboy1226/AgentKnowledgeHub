@@ -275,6 +275,16 @@ DeepSeek 目前只用于 Chat，可与 Qwen Embedding 组合：将 `CHAT_PROVIDE
 
 无网络单元测试：`cd python && python -m pytest tests -q`。真实 smoke test 则在启动服务后调用 `/api/health`、`/api/admin/stats` 和一次简短的 `/api/qa/ask`。
 
+### S4 离线 Vector RAG / GraphRAG 对照
+
+以下命令只使用内存 fake Provider、VectorStore 和 KnowledgeGraph，生成格式与确定性评分的验证报告，不会调用模型或数据库：
+
+```bash
+python scripts/run-rag-eval.py --offline --mode both
+```
+
+报告位于被 Git 忽略的 `.runtime/evaluation/<run_id>/`。真实对照评测必须在运行前单独获得授权，先展示将发送的合成语料、12 个问题、预计模型调用次数、测试 logical key 前缀和精确删除范围。
+
 用任意编辑器打开 `.env`，填入你的配置：
 
 ```env
