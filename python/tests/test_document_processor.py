@@ -208,11 +208,13 @@ async def test_relations_are_stably_deduplicated(setup):
 
 
 @pytest.mark.asyncio
-async def test_relation_missing_entity_endpoint_is_rejected(setup):
-    processor, _, extractor, _, _ = setup
+async def test_relation_missing_entity_endpoint_is_dropped_safely(setup):
+    processor, _, extractor, audits, _ = setup
     extractor.results = [ExtractionResult([Entity("Alice", "Person")], [Relation("Alice", "uses", "Missing")], [])]
-    with pytest.raises(InvalidExtractionResult, match="endpoint"):
-        await prepare(processor)
+    result = await prepare(processor)
+    assert result.relations == []
+    assert result.processing_metadata["dropped_relation_count"] == 1
+    assert audits[-1]["dropped_relation_count"] == 1
 
 
 @pytest.mark.asyncio

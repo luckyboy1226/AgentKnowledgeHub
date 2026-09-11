@@ -166,7 +166,7 @@ class DocumentProcessorAdapter:
                 self._audit(operation_id, "extract", success=False, error_type=type(exc).__name__)
                 raise KnowledgeExtractionError("Knowledge extraction failed") from exc
             extract_elapsed_ms = round((time.monotonic() - extract_started) * 1000, 3)
-            entities, relations = self._normalize_extraction(extraction)
+            entities, relations, dropped_relation_count = self._normalize_extraction(extraction)
             self._audit(
                 operation_id,
                 "extract",
@@ -174,6 +174,7 @@ class DocumentProcessorAdapter:
                 elapsed_ms=extract_elapsed_ms,
                 entity_count=len(entities),
                 relation_count=len(relations),
+                dropped_relation_count=dropped_relation_count,
             )
             return PreparedDocument(
                 chunks=chunks,
@@ -190,6 +191,7 @@ class DocumentProcessorAdapter:
                     "chunk_count": len(chunks),
                     "entity_count": len(entities),
                     "relation_count": len(relations),
+                    "dropped_relation_count": dropped_relation_count,
                 },
             )
         finally:
@@ -280,7 +282,7 @@ class DocumentProcessorAdapter:
 
     def _normalize_extraction(
         self, results: list[ExtractionResult]
-    ) -> tuple[list[Entity], list[Relation]]:
+    ) -> tuple[list[Entity], list[Relation], int]:
         entities_by_key: dict[tuple[str, str], Entity] = {}
         raw_relations: list[Relation] = []
         for result in results or []:
@@ -306,10 +308,16 @@ class DocumentProcessorAdapter:
             raise InvalidExtractionResult("Extraction result exceeds configured limits")
         entity_names = {entity.name for entity in entities_by_key.values()}
         relations_by_key: dict[tuple[str, str, str, str], Relation] = {}
+        dropped_relation_count = 0
         for relation in raw_relations:
             head, tail = str(relation.head or "").strip(), str(relation.tail or "").strip()
-            if not head or not tail or head not in entity_names or tail not in entity_names:
-                raise InvalidExtractionResult("Relation endpoint is missing from entities")
+            if not head or not tail:
+                raise InvalidExtractionResult("Relation endpoint is incomplete")
+            if head not in entity_names or tail not in entity_names:
+                # Never synthesize a graph node from an unsupported provider
+                # reference. Keep validated evidence and report only the count.
+                dropped_relation_count += 1
+                continue
             # Keep raw extraction evidence while mapping only reviewed aliases
             # to a canonical relationship.  Unknown labels are intentionally
             # non-specific rather than becoming arbitrary graph types.
@@ -337,7 +345,7 @@ class DocumentProcessorAdapter:
                 )
         entities = [entities_by_key[key] for key in sorted(entities_by_key)]
         relations = [relations_by_key[key] for key in sorted(relations_by_key)]
-        return entities, relations
+        return entities, relations, dropped_relation_count
 
     def _audit(self, operation_id: str, phase: str, **fields: Any) -> None:
         event = {"operation_id": operation_id, "phase": phase, **fields}
