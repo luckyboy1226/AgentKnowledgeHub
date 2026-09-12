@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+import httpx
 
 from agents.doc_parser_agent import DocType, DocumentChunk
 from agents.knowledge_extract_agent import Entity, ExtractionResult, Relation
@@ -143,6 +144,30 @@ async def test_temp_file_is_removed_after_extract_failure(setup):
     with pytest.raises(KnowledgeExtractionError):
         await prepare(processor)
     assert parser.paths and not parser.paths[0].exists() and list(temp_root.glob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_provider_timeout_is_wrapped_and_audited_without_provider_text(setup):
+    processor, _, extractor, events, _ = setup
+    extractor.error = httpx.ReadTimeout("api_key=fake-key provider-body=do-not-store")
+    with pytest.raises(KnowledgeExtractionError) as error:
+        await prepare(processor)
+    assert isinstance(error.value.__cause__, httpx.ReadTimeout)
+    event = events[-1]
+    assert event["phase"] == "extract"
+    assert event["error_category"] == "provider_timeout"
+    assert event["error_type"] == "ReadTimeout"
+    assert "fake-key" not in str(event) and "provider-body" not in str(event)
+
+
+@pytest.mark.asyncio
+async def test_normalization_validation_is_audited_with_safe_category(setup):
+    processor, _, extractor, events, _ = setup
+    extractor.results = [ExtractionResult([Entity("Alice", "Person")], [Relation("", "uses", "Alice")], [])]
+    with pytest.raises(InvalidExtractionResult):
+        await prepare(processor)
+    assert events[-1]["phase"] == "normalize"
+    assert events[-1]["error_category"] == "extraction_validation_error"
 
 
 @pytest.mark.asyncio

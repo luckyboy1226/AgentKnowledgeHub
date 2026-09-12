@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from agents.doc_parser_agent import DocumentChunk
 from agents.knowledge_extract_agent import Entity, Relation
 from services.document_registry import RegistryError, safe_error, utcnow
+from services.processing_errors import classify_safe_processing_error
 
 
 ACTIVE_OPERATION_STATUSES = {"pending", "running", "compensating"}
@@ -188,6 +189,10 @@ class DocumentUpdateCoordinator:
             "vector_ids": [],
             "graph_evidence_keys": [],
             "error_summary": None,
+            "error_phase": None,
+            "error_category": None,
+            "error_type": None,
+            "chunk_index": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -389,7 +394,13 @@ class DocumentUpdateCoordinator:
         operation = self.journal.get(operation_id)
         if operation is None:
             return
-        self.journal.update(operation_id, status="compensating", error_summary=safe_error(original_error))
+        failure = classify_safe_processing_error(original_error, phase=self._failure_phase(original_error))
+        self.journal.update(
+            operation_id,
+            status="compensating",
+            error_summary=safe_error(original_error),
+            **failure.as_dict(),
+        )
         completed = set(operation.get("completed_steps", []))
         document_id = operation["document_id"]
         version = int(operation["version"])
@@ -428,7 +439,33 @@ class DocumentUpdateCoordinator:
             )
             return
         self._mark_reserved_version_failed(document_id, version, original_error)
-        self.journal.update(operation_id, status="failed", error_summary=safe_error(original_error))
+        self.journal.update(
+            operation_id,
+            status="failed",
+            error_summary=safe_error(original_error),
+            **failure.as_dict(),
+        )
+
+    @staticmethod
+    def _failure_phase(error: Exception) -> str:
+        """Map our processing boundary wrappers without changing their semantics."""
+        from services.document_processor import (
+            DocumentParseError,
+            InvalidExtractionResult,
+            KnowledgeExtractionError,
+            ProcessingTimeoutError,
+        )
+
+        if isinstance(error, DocumentParseError):
+            return "parse"
+        if isinstance(error, KnowledgeExtractionError):
+            return "extract"
+        if isinstance(error, InvalidExtractionResult):
+            return "normalize"
+        if isinstance(error, ProcessingTimeoutError):
+            phase = getattr(error, "safe_processing_phase", "unknown")
+            return phase if phase in {"parse", "extract"} else "unknown"
+        return "unknown"
 
     async def delete_document(self, document_id: str, operation_id: str | None = None) -> dict[str, Any]:
         if operation_id:

@@ -22,6 +22,7 @@ from typing import Any, Awaitable, Callable, Protocol
 from agents.doc_parser_agent import DocType, DocumentChunk
 from agents.knowledge_extract_agent import Entity, ExtractionResult, Relation
 from services.document_update_coordinator import PreparedDocument
+from services.processing_errors import classify_safe_processing_error
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,8 @@ class KnowledgeExtractionError(RuntimeError):
 
 class InvalidExtractionResult(ValueError):
     """The parser or extractor returned an unsafe or internally inconsistent result."""
+
+    safe_processing_category = "extraction_validation_error"
 
 
 class ProcessingTimeoutError(TimeoutError):
@@ -147,10 +150,18 @@ class DocumentProcessorAdapter:
             try:
                 parsed_chunks = await self.parser.parse(str(temp_path))
             except asyncio.TimeoutError as exc:
-                self._audit(operation_id, "parse", success=False, error_type=type(exc).__name__)
-                raise ProcessingTimeoutError("Document parsing timed out") from exc
+                self._audit(
+                    operation_id, "parse", success=False,
+                    **classify_safe_processing_error(exc, phase="parse").as_dict(),
+                )
+                timeout = ProcessingTimeoutError("Document parsing timed out")
+                timeout.safe_processing_phase = "parse"
+                raise timeout from exc
             except Exception as exc:
-                self._audit(operation_id, "parse", success=False, error_type=type(exc).__name__)
+                self._audit(
+                    operation_id, "parse", success=False,
+                    **classify_safe_processing_error(exc, phase="parse").as_dict(),
+                )
                 raise DocumentParseError("Document parsing failed") from exc
             parse_elapsed_ms = round((time.monotonic() - parse_started) * 1000, 3)
             chunks = self._normalize_chunks(parsed_chunks, document_id, version, content_hash, source, doc_type)
@@ -160,13 +171,28 @@ class DocumentProcessorAdapter:
             try:
                 extraction = await self.extractor.extract(chunks)
             except asyncio.TimeoutError as exc:
-                self._audit(operation_id, "extract", success=False, error_type=type(exc).__name__)
-                raise ProcessingTimeoutError("Knowledge extraction timed out") from exc
+                self._audit(
+                    operation_id, "extract", success=False,
+                    **classify_safe_processing_error(exc, phase="extract").as_dict(),
+                )
+                timeout = ProcessingTimeoutError("Knowledge extraction timed out")
+                timeout.safe_processing_phase = "extract"
+                raise timeout from exc
             except Exception as exc:
-                self._audit(operation_id, "extract", success=False, error_type=type(exc).__name__)
+                self._audit(
+                    operation_id, "extract", success=False,
+                    **classify_safe_processing_error(exc, phase="extract").as_dict(),
+                )
                 raise KnowledgeExtractionError("Knowledge extraction failed") from exc
             extract_elapsed_ms = round((time.monotonic() - extract_started) * 1000, 3)
-            entities, relations, dropped_relation_count = self._normalize_extraction(extraction)
+            try:
+                entities, relations, dropped_relation_count = self._normalize_extraction(extraction)
+            except Exception as exc:
+                self._audit(
+                    operation_id, "normalize", success=False,
+                    **classify_safe_processing_error(exc, phase="normalize").as_dict(),
+                )
+                raise
             self._audit(
                 operation_id,
                 "extract",

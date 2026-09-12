@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import timedelta
 
+import httpx
 import pytest
 
 from agents.doc_parser_agent import DocType, DocumentChunk
@@ -15,6 +16,7 @@ from services.document_update_coordinator import (
     OperationBusyError,
     PreparedDocument,
 )
+from services.document_processor import InvalidExtractionResult, KnowledgeExtractionError
 
 
 class FakeRegistry:
@@ -144,10 +146,13 @@ class FakeJournal:
 class FakeProcessor:
     def __init__(self):
         self.fail = False
+        self.error = None
         self.calls = 0
 
     async def prepare(self, *, content, filename, document_id, version, content_hash, operation_id):
         self.calls += 1
+        if self.error:
+            raise self.error
         if self.fail:
             raise RuntimeError("processor failure")
         return PreparedDocument(
@@ -273,6 +278,66 @@ async def test_processor_failure_marks_version_failed(setup):
         await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
     assert journal.get("op-1")["status"] == "failed"
     assert registry.versions["doc-1"][0]["status"] == "failed"
+
+
+def wrapped_extraction_error(cause):
+    error = KnowledgeExtractionError("Knowledge extraction failed")
+    error.__cause__ = cause
+    return error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cause", "expected_category", "expected_type"),
+    [
+        (httpx.ReadTimeout("fake key=never-store"), "provider_timeout", "ReadTimeout"),
+        (httpx.ConnectError("Authorization: never-store"), "provider_connection_error", "ConnectError"),
+        (
+            httpx.HTTPStatusError(
+                "provider body=never-store",
+                request=httpx.Request("POST", "https://example.invalid"),
+                response=httpx.Response(503, request=httpx.Request("POST", "https://example.invalid")),
+            ),
+            "provider_http_error",
+            "HTTPStatusError",
+        ),
+        (
+            httpx.HTTPStatusError(
+                "rate body=never-store",
+                request=httpx.Request("POST", "https://example.invalid"),
+                response=httpx.Response(429, request=httpx.Request("POST", "https://example.invalid")),
+            ),
+            "provider_rate_limit",
+            "HTTPStatusError",
+        ),
+        (RuntimeError("fake provider body and api_key=never-store"), "unknown", "RuntimeError"),
+    ],
+)
+async def test_processor_failure_records_safe_provider_category(setup, cause, expected_category, expected_type):
+    coordinator, _, journal, _, _, processor, _ = setup
+    processor.error = wrapped_extraction_error(cause)
+    with pytest.raises(KnowledgeExtractionError):
+        await coordinator.create_document_version(filename="a.txt", content=b"benchmark body must not persist", operation_id="op-1")
+    operation = journal.get("op-1")
+    assert operation["error_phase"] == "extract"
+    assert operation["error_category"] == expected_category
+    assert operation["error_type"] == expected_type
+    assert "never-store" not in str(operation)
+    assert "benchmark body" not in str(operation)
+
+
+@pytest.mark.asyncio
+async def test_validation_failure_records_normalize_category_and_preserves_compensation(setup):
+    coordinator, _, journal, vector, graph, processor, events = setup
+    processor.error = InvalidExtractionResult("validation failure")
+    with pytest.raises(InvalidExtractionResult):
+        await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
+    operation = journal.get("op-1")
+    assert operation["error_phase"] == "normalize"
+    assert operation["error_category"] == "extraction_validation_error"
+    assert operation["completed_steps"] == ["mongo_reserved"]
+    assert operation["compensation_steps"] == []
+    assert events == [] and vector.staged == {} and graph.staged == {}
 
 
 @pytest.mark.asyncio

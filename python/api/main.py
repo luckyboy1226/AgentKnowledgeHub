@@ -347,6 +347,7 @@ async def get_document_operation(operation_id: str):
         for key in (
             "operation_id", "operation_type", "document_id", "version", "status",
             "completed_steps", "compensation_steps", "created_at", "updated_at",
+            "error_phase", "error_category", "error_type", "chunk_index",
         )
     } | {"error_summary": safe_error(operation.get("error_summary") or "") or None}
 
