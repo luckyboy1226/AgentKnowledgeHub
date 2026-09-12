@@ -204,6 +204,9 @@ class DocumentUpdateCoordinator:
             "error_category": None,
             "error_type": None,
             "chunk_index": None,
+            "timeout_kind": None,
+            "attempt": None,
+            "max_attempts": None,
             "created_at": now,
             "updated_at": now,
         }

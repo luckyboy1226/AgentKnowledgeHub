@@ -297,14 +297,14 @@ def wrapped_extraction_error(cause):
     ("cause", "expected_category", "expected_type"),
     [
         (httpx.ReadTimeout("fake key=never-store"), "provider_timeout", "ReadTimeout"),
-        (httpx.ConnectError("Authorization: never-store"), "provider_connection_error", "ConnectError"),
+        (httpx.ConnectError("Authorization: never-store"), "provider_connection", "ConnectError"),
         (
             httpx.HTTPStatusError(
                 "provider body=never-store",
                 request=httpx.Request("POST", "https://example.invalid"),
                 response=httpx.Response(503, request=httpx.Request("POST", "https://example.invalid")),
             ),
-            "provider_http_error",
+            "provider_http",
             "HTTPStatusError",
         ),
         (
@@ -340,7 +340,7 @@ async def test_validation_failure_records_normalize_category_and_preserves_compe
         await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
     operation = journal.get("op-1")
     assert operation["error_phase"] == "normalize"
-    assert operation["error_category"] == "extraction_validation_error"
+    assert operation["error_category"] == "validation"
     assert operation["completed_steps"] == ["mongo_reserved"]
     assert operation["compensation_steps"] == []
     assert events == [] and vector.staged == {} and graph.staged == {}

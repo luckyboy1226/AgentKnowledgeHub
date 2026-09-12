@@ -43,6 +43,7 @@ from services.document_processor import (
     UnsupportedDocumentType,
     safe_filename,
 )
+from services.processing_errors import classify_safe_processing_error
 from services.document_update_coordinator import (
     DocumentUpdateCoordinator,
     OperationBusyError,
@@ -72,7 +73,9 @@ def build_document_coordinator(
 ) -> DocumentUpdateCoordinator:
     """Compose document dependencies from existing lifecycle-owned clients only."""
     processor = DocumentProcessorAdapter(
-        DocParserAgent(chat_provider), KnowledgeExtractAgent(chat_provider), temp_root=temp_root
+        DocParserAgent(chat_provider),
+        KnowledgeExtractAgent(chat_provider, timeout_policy=settings.extraction_timeout_policy),
+        temp_root=temp_root,
     )
     return DocumentUpdateCoordinator(registry, vectors, graph, processor)
 
@@ -240,10 +243,17 @@ def _raise_document_error(error: Exception) -> None:
         raise error
     if isinstance(error, (UnsupportedDocumentType, EmptyDocumentError)):
         raise HTTPException(status_code=400, detail="Invalid document input") from None
-    if isinstance(error, (InvalidExtractionResult, DocumentParseError, KnowledgeExtractionError)):
-        raise HTTPException(status_code=422, detail="Document processing produced an invalid result") from None
-    if isinstance(error, ProcessingTimeoutError):
+    failure = classify_safe_processing_error(error, phase=getattr(error, "safe_processing_phase", "unknown"))
+    if isinstance(error, ProcessingTimeoutError) or failure.error_category == "provider_timeout":
         raise HTTPException(status_code=504, detail="Document processing timed out") from None
+    if failure.error_category in {"provider_connection", "provider_rate_limit", "provider_auth"}:
+        raise HTTPException(status_code=503, detail="Document processing provider is unavailable") from None
+    if failure.error_category in {"provider_http", "provider_invalid_response"}:
+        raise HTTPException(status_code=502, detail="Document processing provider returned an invalid response") from None
+    if failure.error_category == "validation" or isinstance(error, (InvalidExtractionResult, DocumentParseError)):
+        raise HTTPException(status_code=422, detail="Document processing produced an invalid result") from None
+    if isinstance(error, KnowledgeExtractionError):
+        raise HTTPException(status_code=500, detail="Document processing failed") from None
     if isinstance(error, OperationBusyError):
         raise HTTPException(status_code=409, detail="A document operation is already active") from None
     if isinstance(error, OperationIdentityConflictError):
@@ -372,6 +382,7 @@ async def get_document_operation(operation_id: str):
             "operation_id", "operation_type", "document_id", "version", "status",
             "completed_steps", "compensation_steps", "created_at", "updated_at",
             "error_phase", "error_category", "error_type", "chunk_index",
+            "timeout_kind", "attempt", "max_attempts",
         )
     } | {"error_summary": safe_error(operation.get("error_summary") or "") or None}
     document_id = operation.get("document_id")

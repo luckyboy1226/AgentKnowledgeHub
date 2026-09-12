@@ -50,7 +50,7 @@ class KnowledgeExtractionError(RuntimeError):
 class InvalidExtractionResult(ValueError):
     """The parser or extractor returned an unsafe or internally inconsistent result."""
 
-    safe_processing_category = "extraction_validation_error"
+    safe_processing_category = "validation"
 
 
 class ProcessingTimeoutError(TimeoutError):
@@ -170,20 +170,20 @@ class DocumentProcessorAdapter:
             extract_started = time.monotonic()
             try:
                 extraction = await self.extractor.extract(chunks)
-            except asyncio.TimeoutError as exc:
-                self._audit(
-                    operation_id, "extract", success=False,
-                    **classify_safe_processing_error(exc, phase="extract").as_dict(),
-                )
-                timeout = ProcessingTimeoutError("Knowledge extraction timed out")
-                timeout.safe_processing_phase = "extract"
-                raise timeout from exc
             except Exception as exc:
+                failure = classify_safe_processing_error(exc, phase="extract")
                 self._audit(
                     operation_id, "extract", success=False,
-                    **classify_safe_processing_error(exc, phase="extract").as_dict(),
+                    **failure.as_dict(),
                 )
-                raise KnowledgeExtractionError("Knowledge extraction failed") from exc
+                if failure.error_category == "provider_timeout":
+                    timeout = ProcessingTimeoutError("Knowledge extraction timed out")
+                    timeout.safe_processing_phase = "extract"
+                    _copy_safe_failure_metadata(timeout, failure)
+                    raise timeout from exc
+                extraction_error = KnowledgeExtractionError("Knowledge extraction failed")
+                _copy_safe_failure_metadata(extraction_error, failure)
+                raise extraction_error from exc
             extract_elapsed_ms = round((time.monotonic() - extract_started) * 1000, 3)
             try:
                 entities, relations, dropped_relation_count = self._normalize_extraction(extraction)
@@ -379,3 +379,9 @@ class DocumentProcessorAdapter:
             self.audit_sink(event)
             return
         logger.info("document processor event=%s", json.dumps(event, sort_keys=True))
+
+
+def _copy_safe_failure_metadata(error: Exception, failure: Any) -> None:
+    """Retain only structured metadata through wrappers, never provider text."""
+    for field in ("chunk_index", "timeout_kind", "attempt", "max_attempts"):
+        setattr(error, field, getattr(failure, field, None))

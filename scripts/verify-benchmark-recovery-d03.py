@@ -45,6 +45,9 @@ OBSERVATION_DEADLINE_SECONDS = 15 * 60
 TERMINAL_OPERATION_STATUSES = {"succeeded", "failed", "cleanup_pending", "needs_reconciliation"}
 SOURCE_HASH_PATHS = (
     Path("python/api/main.py"),
+    Path("python/agents/knowledge_extract_agent.py"),
+    Path("python/providers/chat.py"),
+    Path("python/services/processing_errors.py"),
     Path("python/services/document_update_coordinator.py"),
     Path("scripts/run-rag-eval.py"),
     Path("scripts/verify-benchmark-recovery-d03.py"),
@@ -160,6 +163,9 @@ async def _observe_operation(
             "error_category": body.get("error_category"),
             "error_type": body.get("error_type"),
             "chunk_index": body.get("chunk_index"),
+            "timeout_kind": body.get("timeout_kind"),
+            "attempt": body.get("attempt"),
+            "max_attempts": body.get("max_attempts"),
             "error_summary": body.get("error_summary"),
         }
         observations.append(observation)

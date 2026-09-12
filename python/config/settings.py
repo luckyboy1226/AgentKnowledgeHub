@@ -4,6 +4,7 @@
 
 from dataclasses import dataclass
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -17,6 +18,21 @@ class ProviderConfig:
     legacy: bool = False
 
 
+@dataclass(frozen=True)
+class ExtractionTimeoutPolicy:
+    """Bounded extraction-only request and deadline policy.
+
+    The document pipeline owns retries around the model call.  This policy is
+    intentionally separate from ordinary chat so QA behavior remains stable.
+    """
+
+    request_timeout_seconds: float
+    chunk_deadline_seconds: float
+    document_deadline_seconds: float
+    max_attempts: int
+    retry_backoff_seconds: float
+
+
 class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
@@ -24,6 +40,15 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
+
+    # Provider request policy.  The ordinary chat value preserves the current
+    # QA default; extraction has its own bounded policy below.
+    chat_timeout_seconds: float = Field(default=60, gt=0, le=600)
+    extraction_request_timeout_seconds: float = Field(default=120, gt=0, le=300)
+    extraction_chunk_deadline_seconds: float = Field(default=180, gt=0, le=600)
+    document_processing_timeout_seconds: float = Field(default=900, gt=0, le=1800)
+    extraction_max_attempts: int = Field(default=2, ge=1, le=3)
+    extraction_retry_backoff_seconds: float = Field(default=1, ge=0, le=5)
 
     # Explicit provider configuration. Empty values deliberately fall back to
     # the legacy variables above, keeping existing local .env files functional.
@@ -97,6 +122,24 @@ class Settings(BaseSettings):
             dimensions=self.embedding_dimensions,
             legacy=not explicit,
         )
+
+    @property
+    def extraction_timeout_policy(self) -> ExtractionTimeoutPolicy:
+        return ExtractionTimeoutPolicy(
+            request_timeout_seconds=self.extraction_request_timeout_seconds,
+            chunk_deadline_seconds=self.extraction_chunk_deadline_seconds,
+            document_deadline_seconds=self.document_processing_timeout_seconds,
+            max_attempts=self.extraction_max_attempts,
+            retry_backoff_seconds=self.extraction_retry_backoff_seconds,
+        )
+
+    @model_validator(mode="after")
+    def _validate_timeout_hierarchy(self) -> "Settings":
+        if self.extraction_chunk_deadline_seconds < self.extraction_request_timeout_seconds:
+            raise ValueError("EXTRACTION_CHUNK_DEADLINE_SECONDS must cover one extraction request")
+        if self.document_processing_timeout_seconds < self.extraction_chunk_deadline_seconds:
+            raise ValueError("DOCUMENT_PROCESSING_TIMEOUT_SECONDS must cover one chunk deadline")
+        return self
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -20,7 +20,13 @@ def create_chat_provider(settings: Settings) -> OpenAICompatibleChatProvider:
         raise ValueError("Chat provider requires an API key, base URL, and model.")
     if config.legacy:
         logger.warning("Using legacy OPENAI_* variables for chat provider configuration.")
-    return OpenAICompatibleChatProvider(config.provider, config.api_key, config.base_url, config.model)
+    return OpenAICompatibleChatProvider(
+        config.provider,
+        config.api_key,
+        config.base_url,
+        config.model,
+        timeout_seconds=settings.chat_timeout_seconds,
+    )
 
 
 def create_embedding_provider(settings: Settings) -> OpenAICompatibleEmbeddingProvider:

@@ -118,6 +118,10 @@ def test_operation_response_exposes_only_safe_failure_classification(client):
         error_phase="extract",
         error_category="provider_timeout",
         error_type="APITimeoutError",
+        chunk_index=0,
+        timeout_kind="read",
+        attempt=2,
+        max_attempts=2,
         error_summary="Knowledge extraction failed",
     )
     response = http.get("/api/document-operations/op-1")
@@ -126,7 +130,8 @@ def test_operation_response_exposes_only_safe_failure_classification(client):
     assert payload["error_phase"] == "extract"
     assert payload["error_category"] == "provider_timeout"
     assert payload["error_type"] == "APITimeoutError"
-    assert payload["chunk_index"] is None
+    assert payload["chunk_index"] == 0
+    assert (payload["timeout_kind"], payload["attempt"], payload["max_attempts"]) == ("read", 2, 2)
     assert "prompt" not in payload and "response" not in payload
 
 

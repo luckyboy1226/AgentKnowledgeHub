@@ -11,12 +11,14 @@
 from __future__ import annotations
 
 import json
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from agents.doc_parser_agent import DocumentChunk
-from providers.chat import ChatProvider
+from config.settings import ExtractionTimeoutPolicy
+from providers.chat import ChatProvider, ChatRequestOptions
 
 EXTRACTION_SYSTEM_PROMPT = """\
 你是一个专业的知识抽取引擎。给定一段文本，请提取其中的：
@@ -85,6 +87,39 @@ class ExtractionResult:
     source_chunk_id: str = ""
 
 
+class ExtractionInvocationError(RuntimeError):
+    """Safe metadata boundary for one failed, side-effect-free model call."""
+
+    safe_processing_phase = "extract"
+
+    def __init__(
+        self,
+        *,
+        chunk_index: int | None,
+        attempt: int,
+        max_attempts: int,
+        timeout_kind: str | None = None,
+    ) -> None:
+        super().__init__("Knowledge extraction provider call failed")
+        self.chunk_index = chunk_index
+        self.attempt = attempt
+        self.max_attempts = max_attempts
+        self.timeout_kind = timeout_kind
+
+
+class ExtractionDeadlineError(TimeoutError):
+    """A bounded chunk or document deadline expired before persistence."""
+
+    safe_processing_phase = "extract"
+
+    def __init__(self, *, chunk_index: int | None, timeout_kind: str, attempt: int, max_attempts: int) -> None:
+        super().__init__("Knowledge extraction deadline expired")
+        self.chunk_index = chunk_index
+        self.timeout_kind = timeout_kind
+        self.attempt = attempt
+        self.max_attempts = max_attempts
+
+
 class KnowledgeExtractAgent:
     """
     知识抽取 Agent
@@ -95,38 +130,128 @@ class KnowledgeExtractAgent:
 
     BATCH_SIZE = 5
 
-    def __init__(self, chat_provider: ChatProvider) -> None:
+    def __init__(
+        self,
+        chat_provider: ChatProvider,
+        *,
+        timeout_policy: ExtractionTimeoutPolicy | None = None,
+    ) -> None:
         self.llm = chat_provider
+        self.timeout_policy = timeout_policy or ExtractionTimeoutPolicy(
+            request_timeout_seconds=120,
+            chunk_deadline_seconds=180,
+            document_deadline_seconds=900,
+            max_attempts=2,
+            retry_backoff_seconds=1,
+        )
 
     # ── public API ───────────────────────────────────────────
 
     async def extract(self, chunks: list[DocumentChunk]) -> list[ExtractionResult]:
         """从一组文档块中抽取知识"""
+        try:
+            return await asyncio.wait_for(self._extract_all(chunks), self.timeout_policy.document_deadline_seconds)
+        except asyncio.TimeoutError as exc:
+            if isinstance(exc, ExtractionDeadlineError):
+                raise
+            # A document-wide deadline cannot be safely attributed to one
+            # chunk: the active coroutine may have been cancelled between work.
+            error = ExtractionDeadlineError(
+                chunk_index=None,
+                timeout_kind="document_deadline",
+                attempt=0,
+                max_attempts=self.timeout_policy.max_attempts,
+            )
+            raise error from exc
+
+    async def _extract_all(self, chunks: list[DocumentChunk]) -> list[ExtractionResult]:
         results: list[ExtractionResult] = []
         for i in range(0, len(chunks), self.BATCH_SIZE):
             batch = chunks[i : i + self.BATCH_SIZE]
             for chunk in batch:
-                result = await self._extract_from_chunk(chunk)
+                result = await self._extract_chunk_with_deadline(chunk)
                 results.append(result)
         merged = self._deduplicate(results)
         return merged
 
     async def extract_single(self, text: str, chunk_id: str = "") -> ExtractionResult:
         """从单段文本中抽取知识"""
-        return await self._extract_from_text(text, chunk_id)
+        return await self._extract_from_text(text, chunk_id, chunk_index=None)
 
     # ── core extraction ──────────────────────────────────────
 
     async def _extract_from_chunk(self, chunk: DocumentChunk) -> ExtractionResult:
-        return await self._extract_from_text(chunk.content, chunk.chunk_id)
+        return await self._extract_from_text(chunk.content, chunk.chunk_id, chunk_index=chunk.chunk_index)
 
-    async def _extract_from_text(self, text: str, source_id: str) -> ExtractionResult:
+    async def _extract_chunk_with_deadline(self, chunk: DocumentChunk) -> ExtractionResult:
+        try:
+            return await asyncio.wait_for(self._extract_from_chunk(chunk), self.timeout_policy.chunk_deadline_seconds)
+        except asyncio.TimeoutError as exc:
+            if isinstance(exc, ExtractionDeadlineError):
+                raise
+            error = ExtractionDeadlineError(
+                chunk_index=chunk.chunk_index,
+                timeout_kind="chunk_deadline",
+                attempt=0,
+                max_attempts=self.timeout_policy.max_attempts,
+            )
+            raise error from exc
+
+    async def _extract_from_text(self, text: str, source_id: str, *, chunk_index: int | None) -> ExtractionResult:
         messages = [
             SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
             HumanMessage(content=f"请从以下文本中抽取知识：\n\n{text}"),
         ]
-        resp = await self.llm.ainvoke(messages)
+        resp = await self._invoke_with_policy(messages, chunk_index=chunk_index)
         return self._parse_response(resp.content, source_id)
+
+    async def _invoke_with_policy(self, messages: list[Any], *, chunk_index: int | None) -> Any:
+        """Retry only the provider call; no storage side effect exists here."""
+        policy = self.timeout_policy
+        last_error: BaseException | None = None
+        for attempt in range(1, policy.max_attempts + 1):
+            try:
+                return await asyncio.wait_for(
+                    self.llm.ainvoke(
+                        messages,
+                        request_options=ChatRequestOptions(
+                            timeout_seconds=policy.request_timeout_seconds,
+                            sdk_max_retries=0,
+                        ),
+                    ),
+                    timeout=policy.request_timeout_seconds,
+                )
+            except asyncio.TimeoutError as exc:
+                last_error = exc
+                timeout_kind = "request_deadline"
+            except Exception as exc:
+                last_error = exc
+                timeout_kind = None
+
+            if attempt >= policy.max_attempts or not self._is_retryable(last_error):
+                error = ExtractionInvocationError(
+                    chunk_index=chunk_index,
+                    attempt=attempt,
+                    max_attempts=policy.max_attempts,
+                    timeout_kind=timeout_kind,
+                )
+                raise error from last_error
+            # Bounded sleep is still inside the caller's chunk/document
+            # deadlines, so cancellation cannot lead to a later storage write.
+            if policy.retry_backoff_seconds:
+                await asyncio.sleep(policy.retry_backoff_seconds)
+        raise AssertionError("bounded extraction retry loop unexpectedly completed")
+
+    @staticmethod
+    def _is_retryable(error: BaseException | None) -> bool:
+        if isinstance(error, (asyncio.TimeoutError, TimeoutError)):
+            return True
+        try:
+            import httpx
+            from openai import APIConnectionError, APITimeoutError, RateLimitError
+        except ImportError:  # pragma: no cover - dependencies are installed in production
+            return False
+        return isinstance(error, (httpx.TimeoutException, httpx.NetworkError, APITimeoutError, APIConnectionError, RateLimitError))
 
     def _parse_response(self, raw: str, source_id: str) -> ExtractionResult:
         try:

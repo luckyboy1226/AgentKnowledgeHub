@@ -150,7 +150,7 @@ async def test_temp_file_is_removed_after_extract_failure(setup):
 async def test_provider_timeout_is_wrapped_and_audited_without_provider_text(setup):
     processor, _, extractor, events, _ = setup
     extractor.error = httpx.ReadTimeout("api_key=fake-key provider-body=do-not-store")
-    with pytest.raises(KnowledgeExtractionError) as error:
+    with pytest.raises(ProcessingTimeoutError) as error:
         await prepare(processor)
     assert isinstance(error.value.__cause__, httpx.ReadTimeout)
     event = events[-1]
@@ -167,7 +167,7 @@ async def test_normalization_validation_is_audited_with_safe_category(setup):
     with pytest.raises(InvalidExtractionResult):
         await prepare(processor)
     assert events[-1]["phase"] == "normalize"
-    assert events[-1]["error_category"] == "extraction_validation_error"
+    assert events[-1]["error_category"] == "validation"
 
 
 @pytest.mark.asyncio

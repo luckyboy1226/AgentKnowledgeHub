@@ -252,6 +252,21 @@ DeepSeek 目前只用于 Chat，可与 Qwen Embedding 组合：将 `CHAT_PROVIDE
 
 切换 Embedding 模型或维度可能与已存在的向量 collection 不兼容；生产数据应新建 collection 或按计划重建数据，不能直接混用维度。密钥只应保存在本地 `.env` 或受管密钥服务，绝不写入源码、日志或 `.env.example`。
 
+### 文档抽取超时策略
+
+普通 QA 保持 `CHAT_TIMEOUT_SECONDS=60` 的默认请求策略。文档知识抽取单独使用
+`EXTRACTION_REQUEST_TIMEOUT_SECONDS`、`EXTRACTION_CHUNK_DEADLINE_SECONDS`、
+`DOCUMENT_PROCESSING_TIMEOUT_SECONDS`、`EXTRACTION_MAX_ATTEMPTS` 和
+`EXTRACTION_RETRY_BACKOFF_SECONDS`；默认值为 120 秒、180 秒、900 秒、2 次和 1 秒。
+重试只包围尚未写入任何存储的 Chat 抽取调用，所有时间均有上限，不能靠无限增加 HTTP
+timeout 掩盖上游故障。
+
+若 API 客户端自身先超时，应使用返回/预生成的 `operation_id` 查询
+`/api/document-operations/{operation_id}`，而不是重新 POST。上游模型超时会安全地返回 504，
+使该版本标记为 `failed`，并且不会 stage Chroma 或 Neo4j；旧 current 版本保持可查询。
+安全 operation 摘要仅包含阶段、类别、chunk index、timeout kind 和尝试次数，不包含文档正文、
+prompt、密钥或连接串。详见 [Provider timeout policy](docs/PROVIDER_TIMEOUT_POLICY.md)。
+
 无网络单元测试：`cd python && python -m pytest tests -q`。真实 smoke test 则在启动服务后调用 `/api/health`、`/api/admin/stats` 和一次简短的 `/api/qa/ask`。
 
 ### S4 离线 Vector RAG / GraphRAG 对照
