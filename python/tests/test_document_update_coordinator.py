@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import timedelta
+import hashlib
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from services.document_registry import utcnow
 from services.document_update_coordinator import (
     DocumentUpdateCoordinator,
     OperationBusyError,
+    OperationIdentityConflictError,
     PreparedDocument,
 )
 from services.document_processor import InvalidExtractionResult, KnowledgeExtractionError
@@ -29,10 +31,14 @@ class FakeRegistry:
     def reserve(self, filename, content, logical_key=None, namespace="default"):
         key = (namespace, logical_key or filename)
         document = next((item for item in self.documents.values() if item["key"] == key), None)
-        content_hash = f"hash:{content.decode(errors='ignore')}"
+        content_hash = hashlib.sha256(content).hexdigest()
         if document is None:
             self.counter += 1
-            document = {"document_id": f"doc-{self.counter}", "key": key, "current_version": None, "status": "processing"}
+            document = {
+                "document_id": f"doc-{self.counter}", "key": key,
+                "namespace": namespace, "logical_key": logical_key or filename,
+                "current_version": None, "status": "processing",
+            }
             self.documents[document["document_id"]] = document
         versions = self.versions.setdefault(document["document_id"], [])
         existing = next((row for row in versions if row["content_hash"] == content_hash), None)
@@ -441,8 +447,30 @@ async def test_compensation_failure_needs_reconciliation(setup):
 async def test_same_operation_retry_does_not_duplicate_writes(setup):
     coordinator, _, _, _, _, processor, events = setup
     await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
-    await coordinator.create_document_version(filename="a.txt", content=b"different", operation_id="op-1")
+    await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
     assert processor.calls == 1 and events.count("vector.stage") == 1
+
+
+@pytest.mark.asyncio
+async def test_same_operation_id_with_different_upload_identity_is_rejected(setup):
+    coordinator, _, _, _, _, processor, _ = setup
+    await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
+    with pytest.raises(OperationIdentityConflictError):
+        await coordinator.create_document_version(filename="a.txt", content=b"different", operation_id="op-1")
+    assert processor.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_same_operation_id_with_different_logical_key_is_rejected(setup):
+    coordinator, _, _, _, _, processor, _ = setup
+    await coordinator.create_document_version(
+        filename="a.txt", content=b"new", logical_key="first", operation_id="op-1"
+    )
+    with pytest.raises(OperationIdentityConflictError):
+        await coordinator.create_document_version(
+            filename="a.txt", content=b"new", logical_key="second", operation_id="op-1"
+        )
+    assert processor.calls == 1
 
 
 @pytest.mark.asyncio

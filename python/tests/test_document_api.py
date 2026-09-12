@@ -142,6 +142,28 @@ def test_post_passes_explicit_logical_key(client):
     assert coordinator.calls[0][1]["logical_key"] == "customer-policy"
 
 
+def test_post_forwards_client_generated_operation_id(client):
+    http, _, coordinator = client
+    operation_id = "4e1a5cfb-58a8-4fa1-9a7a-9f0783376c0a"
+    response = http.post(
+        "/api/documents",
+        headers={"X-Operation-Id": operation_id},
+        files={"file": ("report.txt", b"valid text", "text/plain")},
+    )
+    assert response.status_code == 200
+    assert coordinator.calls[0][1]["operation_id"] == operation_id
+
+
+def test_post_rejects_invalid_client_generated_operation_id(client):
+    http, _, coordinator = client
+    response = http.post(
+        "/api/documents",
+        headers={"X-Operation-Id": "not-a-uuid"},
+        files={"file": ("report.txt", b"valid text", "text/plain")},
+    )
+    assert response.status_code == 422 and not coordinator.calls
+
+
 def test_post_rejects_empty_file(client):
     http, _, _ = client
     assert upload(http, body=b"").status_code == 400
@@ -250,7 +272,7 @@ def test_get_status(client):
 def test_get_operation_returns_safe_fields(client):
     http, _, _ = client
     payload = http.get("/api/document-operations/op-1").json()
-    assert payload["operation_id"] == "op-1" and "vector_ids" not in payload
+    assert payload["operation_id"] == "op-1" and payload["document_status"] == "ready" and "vector_ids" not in payload
 
 
 def test_get_operation_not_found(client):

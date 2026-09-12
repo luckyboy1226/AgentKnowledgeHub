@@ -23,7 +23,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -43,7 +43,11 @@ from services.document_processor import (
     UnsupportedDocumentType,
     safe_filename,
 )
-from services.document_update_coordinator import DocumentUpdateCoordinator, OperationBusyError
+from services.document_update_coordinator import (
+    DocumentUpdateCoordinator,
+    OperationBusyError,
+    OperationIdentityConflictError,
+)
 from providers.factory import create_chat_provider, create_embedding_provider
 from agents.doc_parser_agent import DocParserAgent
 from agents.knowledge_extract_agent import KnowledgeExtractAgent
@@ -242,6 +246,8 @@ def _raise_document_error(error: Exception) -> None:
         raise HTTPException(status_code=504, detail="Document processing timed out") from None
     if isinstance(error, OperationBusyError):
         raise HTTPException(status_code=409, detail="A document operation is already active") from None
+    if isinstance(error, OperationIdentityConflictError):
+        raise HTTPException(status_code=409, detail="Operation ID is already bound to another request") from None
     if isinstance(error, RegistryError):
         message = str(error).lower()
         if "not found" in message:
@@ -252,9 +258,24 @@ def _raise_document_error(error: Exception) -> None:
     raise HTTPException(status_code=503, detail="A required document-processing dependency is unavailable") from None
 
 
-async def _create_document(file: UploadFile, logical_key: str | None, namespace: str) -> IngestResponse:
+def _optional_operation_id(value: str | None) -> str:
+    if value is None:
+        return str(uuid.uuid4())
+    try:
+        uuid.UUID(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="X-Operation-Id must be a UUID") from None
+    return value
+
+
+async def _create_document(
+    file: UploadFile,
+    logical_key: str | None,
+    namespace: str,
+    operation_id: str | None = None,
+) -> IngestResponse:
     file_name, content = await _read_document_upload(file)
-    operation_id = str(uuid.uuid4())
+    operation_id = _optional_operation_id(operation_id)
     try:
         result = await _coordinator().create_document_version(
             filename=file_name, content=content, logical_key=logical_key, namespace=namespace, operation_id=operation_id
@@ -267,10 +288,13 @@ async def _create_document(file: UploadFile, logical_key: str | None, namespace:
 @app.post("/api/documents", response_model=IngestResponse, tags=["文档入库"])
 @app.post("/api/ingest/upload", response_model=IngestResponse, tags=["文档入库"])
 async def upload_document(
-    file: UploadFile = File(...), logical_key: str | None = Form(None), namespace: str = Form("default")
+    file: UploadFile = File(...),
+    logical_key: str | None = Form(None),
+    namespace: str = Form("default"),
+    operation_id: str | None = Header(None, alias="X-Operation-Id"),
 ):
     """Create a versioned document; the legacy URL remains a compatibility alias."""
-    return await _create_document(file, logical_key, namespace)
+    return await _create_document(file, logical_key, namespace, operation_id)
 
 @app.get("/api/documents/{document_id}")
 async def get_registered_document(document_id: str):
@@ -342,7 +366,7 @@ async def get_document_operation(operation_id: str):
     operation = _coordinator().journal.get(operation_id)
     if not operation:
         raise HTTPException(status_code=404, detail="Document operation not found")
-    return {
+    payload = {
         key: operation.get(key)
         for key in (
             "operation_id", "operation_type", "document_id", "version", "status",
@@ -350,6 +374,11 @@ async def get_document_operation(operation_id: str):
             "error_phase", "error_category", "error_type", "chunk_index",
         )
     } | {"error_summary": safe_error(operation.get("error_summary") or "") or None}
+    document_id = operation.get("document_id")
+    if document_id:
+        document = _registry().find(document_id)
+        payload["document_status"] = document.get("status") if document else None
+    return payload
 
 
 @app.post("/api/ingest/batch", response_model=list[IngestResponse], tags=["文档入库"])

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import uuid
 import re
+import hashlib
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Protocol
 
 from agents.doc_parser_agent import DocumentChunk
 from agents.knowledge_extract_agent import Entity, Relation
-from services.document_registry import RegistryError, safe_error, utcnow
+from services.document_registry import RegistryError, safe_error, safe_key, utcnow
 from services.processing_errors import classify_safe_processing_error
 
 
@@ -52,6 +53,12 @@ class PreparedDocument:
 
 
 class OperationBusyError(RuntimeError):
+    pass
+
+
+class OperationIdentityConflictError(RegistryError):
+    """A caller reused an operation ID for a different durable request."""
+
     pass
 
 
@@ -171,6 +178,8 @@ class DocumentUpdateCoordinator:
         previous_current_version: int | None,
         content_hash: str | None = None,
         source: str | None = None,
+        namespace: str | None = None,
+        logical_key: str | None = None,
     ) -> dict[str, Any]:
         now = utcnow()
         return {
@@ -183,6 +192,8 @@ class DocumentUpdateCoordinator:
             # prevents a faulty caller from turning this field into document text.
             "content_hash": content_hash if content_hash and CONTENT_HASH_RE.fullmatch(content_hash) else None,
             "source": source,
+            "namespace": safe_key(namespace) if namespace is not None else None,
+            "logical_key": safe_key(logical_key) if logical_key is not None else None,
             "status": "running",
             "completed_steps": ["mongo_reserved"],
             "compensation_steps": [],
@@ -197,6 +208,37 @@ class DocumentUpdateCoordinator:
             "updated_at": now,
         }
 
+    @staticmethod
+    def _content_hash(content: bytes) -> str:
+        return hashlib.sha256(content).hexdigest()
+
+    @staticmethod
+    def _assert_same_operation(
+        existing: dict[str, Any],
+        *,
+        operation_type: str,
+        document_id: str | None = None,
+        content_hash: str | None = None,
+        namespace: str | None = None,
+        logical_key: str | None = None,
+    ) -> None:
+        """Fail closed when an operation UUID is reused for another request.
+
+        The journal is the durable idempotency boundary.  Returning an existing
+        operation is safe only when its immutable request identity matches; a
+        UUID must never silently become an alias for another upload.
+        """
+        expected = {
+            "operation_type": operation_type,
+            "document_id": document_id,
+            "content_hash": content_hash,
+            "namespace": safe_key(namespace) if namespace is not None else None,
+            "logical_key": safe_key(logical_key) if logical_key is not None else None,
+        }
+        for key, value in expected.items():
+            if value is not None and existing.get(key) != value:
+                raise OperationIdentityConflictError("Operation ID is already bound to another request")
+
     async def create_document_version(
         self,
         *,
@@ -206,17 +248,27 @@ class DocumentUpdateCoordinator:
         namespace: str = "default",
         operation_id: str | None = None,
     ) -> dict[str, Any]:
+        content_hash = self._content_hash(content)
+        normalized_namespace = safe_key(namespace)
+        normalized_logical_key = safe_key(logical_key or filename)
         if operation_id:
             existing = self.journal.get(operation_id)
             if existing:
-                recovered = await self.recover_operation(operation_id)
-                return {**(recovered or existing), "changed": True}
+                self._assert_same_operation(
+                    existing,
+                    operation_type="create",
+                    content_hash=content_hash,
+                    namespace=normalized_namespace,
+                    logical_key=normalized_logical_key,
+                )
+                return {**existing, "changed": True}
         document, version_record, changed = self.registry.reserve(
             filename, content, logical_key, namespace
         )
         if not changed:
             return self._record_unchanged(
-                operation_id, "create", document, version_record, filename
+                operation_id, "create", document, version_record, filename,
+                namespace=normalized_namespace, logical_key=normalized_logical_key,
             )
         return await self._run_reserved_version(
             document=document,
@@ -225,6 +277,8 @@ class DocumentUpdateCoordinator:
             content=content,
             operation_type="create",
             operation_id=operation_id,
+            namespace=normalized_namespace,
+            logical_key=normalized_logical_key,
         )
 
     async def update_document(
@@ -235,11 +289,17 @@ class DocumentUpdateCoordinator:
         content: bytes,
         operation_id: str | None = None,
     ) -> dict[str, Any]:
+        content_hash = self._content_hash(content)
         if operation_id:
             existing = self.journal.get(operation_id)
             if existing:
-                recovered = await self.recover_operation(operation_id)
-                return {**(recovered or existing), "changed": True}
+                self._assert_same_operation(
+                    existing,
+                    operation_type="update",
+                    document_id=document_id,
+                    content_hash=content_hash,
+                )
+                return {**existing, "changed": True}
         operation_id = operation_id or str(uuid.uuid4())
         if not self.journal.acquire_lock(document_id, operation_id, self.lease_seconds):
             raise OperationBusyError("Another document operation is active")
@@ -250,7 +310,8 @@ class DocumentUpdateCoordinator:
             if not changed:
                 self.journal.release_lock(document_id, operation_id)
                 return self._record_unchanged(
-                    operation_id, "update", document, version_record, filename
+                    operation_id, "update", document, version_record, filename,
+                    namespace=document.get("namespace"), logical_key=document.get("logical_key"),
                 )
             return await self._run_reserved_version(
                 document=document,
@@ -259,6 +320,8 @@ class DocumentUpdateCoordinator:
                 content=content,
                 operation_type="update",
                 operation_id=operation_id,
+                namespace=document.get("namespace"),
+                logical_key=document.get("logical_key"),
             )
         except Exception:
             # _run_reserved_version owns a reserved version and records its
@@ -273,6 +336,9 @@ class DocumentUpdateCoordinator:
         document: dict[str, Any],
         version_record: dict[str, Any],
         filename: str,
+        *,
+        namespace: str | None = None,
+        logical_key: str | None = None,
     ) -> dict[str, Any]:
         operation_id = operation_id or str(uuid.uuid4())
         record = self.journal.create(
@@ -284,6 +350,8 @@ class DocumentUpdateCoordinator:
                 document.get("current_version"),
                 version_record.get("content_hash"),
                 filename,
+                namespace,
+                logical_key,
             )
         )
         if record.get("status") != "succeeded":
@@ -300,6 +368,8 @@ class DocumentUpdateCoordinator:
         content: bytes,
         operation_type: str,
         operation_id: str | None,
+        namespace: str | None = None,
+        logical_key: str | None = None,
     ) -> dict[str, Any]:
         document_id = document["document_id"]
         version = int(version_record["version"])
@@ -317,6 +387,8 @@ class DocumentUpdateCoordinator:
                 document.get("current_version"),
                 version_record.get("content_hash"),
                 filename,
+                namespace,
+                logical_key,
             )
         )
         if operation.get("status") == "succeeded":
