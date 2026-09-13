@@ -8,7 +8,7 @@ from .embeddings import OpenAICompatibleEmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
-CHAT_PROVIDERS = {"qwen", "deepseek", "openai", "openai_compatible"}
+CHAT_PROVIDERS = {"qwen", "deepseek", "openai", "openai_compatible", "zhipu", "bailian"}
 EMBEDDING_PROVIDERS = {"qwen", "openai", "openai_compatible"}
 
 

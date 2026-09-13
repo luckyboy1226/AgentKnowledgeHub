@@ -41,8 +41,16 @@ def test_explicit_configuration_wins_over_legacy():
     assert settings.embedding_config.api_key == "embed-secret"
 
 
-def test_legacy_configuration_remains_compatible():
-    settings = Settings(openai_api_key="legacy", openai_base_url="https://legacy/v1", openai_model="legacy-model")
+def test_legacy_configuration_remains_compatible(tmp_path, monkeypatch):
+    # This contract must not inherit a developer's local explicit provider
+    # settings or a preceding test's process environment.
+    monkeypatch.chdir(tmp_path)
+    for name in (
+        "CHAT_PROVIDER", "CHAT_API_KEY", "CHAT_BASE_URL", "CHAT_MODEL",
+        "EMBEDDING_PROVIDER", "EMBEDDING_API_KEY", "EMBEDDING_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None, openai_api_key="legacy", openai_base_url="https://legacy/v1", openai_model="legacy-model")
     assert settings.chat_config.legacy and settings.embedding_config.legacy
     assert settings.chat_config.api_key == "legacy"
 
@@ -56,6 +64,39 @@ def test_chat_and_embedding_can_be_separate():
 def test_factory_does_not_infer_provider_from_url():
     settings = explicit_settings(chat_provider="deepseek", chat_base_url="https://dashscope.example/v1")
     assert create_chat_provider(settings).provider_name == "deepseek"
+
+
+def test_bailian_glm_uses_bailian_thinking_switch_without_url_inference():
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    settings = explicit_settings(
+        chat_provider="bailian",
+        chat_base_url="https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        chat_model="glm-5.2",
+        embedding_provider="qwen",
+        embedding_model="text-embedding-v4",
+        embedding_dimensions=1536,
+    )
+    from providers.chat import OpenAICompatibleChatProvider
+
+    provider = OpenAICompatibleChatProvider(
+        settings.chat_config.provider,
+        settings.chat_config.api_key,
+        settings.chat_config.base_url,
+        settings.chat_config.model,
+        client_factory=FakeClient,
+    )
+    assert provider.provider_name == "bailian"
+    assert provider.model_name == "glm-5.2"
+    assert provider.thinking_disabled is True
+    assert captured["temperature"] == 0
+    assert captured["extra_body"] == {"enable_thinking": False}
+    embedding = create_embedding_provider(settings)
+    assert (embedding.provider_name, embedding.model_name, embedding.dimensions) == ("qwen", "text-embedding-v4", 1536)
 
 
 def test_embedding_endpoint_is_normalized():

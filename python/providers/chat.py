@@ -48,7 +48,14 @@ class OpenAICompatibleChatProvider:
         self.provider_name = provider_name
         self.model_name = model
         self._client_factory = client_factory
+        # Thinking controls are provider-specific.  Keep them explicit rather
+        # than inferring a provider from a URL or a model identifier.
+        self.thinking_disabled = provider_name in {"zhipu", "bailian"}
         self._client_args = {"model": model, "api_key": api_key, "base_url": base_url, "temperature": 0}
+        if provider_name == "zhipu":
+            self._client_args["extra_body"] = {"thinking": {"type": "disabled"}}
+        elif provider_name == "bailian":
+            self._client_args["extra_body"] = {"enable_thinking": False}
         self._client = self._new_client(timeout_seconds, max_retries)
         self._request_clients: dict[tuple[float, int], Any] = {}
 

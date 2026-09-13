@@ -248,6 +248,22 @@ EMBEDDING_DIMENSIONS=1536
 
 DeepSeek 目前只用于 Chat，可与 Qwen Embedding 组合：将 `CHAT_PROVIDER` 设为 `deepseek`，并填写 DeepSeek 的 Chat 地址、密钥和模型；保留上面的 `EMBEDDING_*` 配置。不要把 DeepSeek 当作 Embedding Provider。
 
+阿里云百炼托管的 GLM-5.2 Chat 可保持 Qwen `text-embedding-v4`（1536 维）不变。百炼 Provider 会显式关闭 Thinking，避免结构化抽取和评测引入额外推理延迟；Base URL 应使用你的百炼业务空间和地域对应的 OpenAI 兼容地址：
+
+```env
+CHAT_PROVIDER=bailian
+CHAT_API_KEY=your-bailian-api-key
+CHAT_BASE_URL=https://your-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+CHAT_MODEL=glm-5.2
+EMBEDDING_PROVIDER=qwen
+EMBEDDING_API_KEY=your-existing-qwen-embedding-key
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_MODEL=text-embedding-v4
+EMBEDDING_DIMENSIONS=1536
+```
+
+仅替换本地 `python/.env` 的 Chat 配置；切换 Chat 模型不会重建或清空 Chroma collection。密钥、Base URL 和认证头不得写入运行证据或 Git。
+
 旧项目配置仍兼容：`CHAT_*` 会回退到 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`；`EMBEDDING_*` 的密钥和地址会回退到相同的 `OPENAI_*`，模型与维度继续使用 `EMBEDDING_MODEL`、`EMBEDDING_DIMENSIONS`。新配置优先。
 
 切换 Embedding 模型或维度可能与已存在的向量 collection 不兼容；生产数据应新建 collection 或按计划重建数据，不能直接混用维度。密钥只应保存在本地 `.env` 或受管密钥服务，绝不写入源码、日志或 `.env.example`。
