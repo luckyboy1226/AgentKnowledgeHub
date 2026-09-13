@@ -96,6 +96,33 @@ async def test_runner_builds_one_shared_plan_per_question_for_both_modes(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_recovery_skips_completed_pairs_and_restarts_incomplete_pair_with_one_plan(tmp_path):
+    q01, q02 = _case("Q01"), _case("Q02")
+    original = build_offline_runner()
+    original = RAGEvaluationRunner(original.agent, (q01,), scope=original.scope, offline=True)
+    completed = await original.run(run_id="resume-pairs", modes=("vector_only", "graph_rag"), output_root=tmp_path)
+    partial = dict(completed["results"][0])
+    partial["question_id"] = q02.question_id
+    partial["category"] = q02.category
+
+    recovered_base = build_offline_runner()
+    recovered = RAGEvaluationRunner(recovered_base.agent, (q01, q02), scope=recovered_base.scope, offline=True)
+    payload = await recovered.run(
+        run_id="resume-pairs",
+        modes=("vector_only", "graph_rag"),
+        output_root=tmp_path,
+        existing_results=[*completed["results"], partial],
+    )
+
+    assert len(payload["results"]) == 4
+    assert [row["question_id"] for row in payload["results"]].count("Q01") == 2
+    assert [row["question_id"] for row in payload["results"]].count("Q02") == 2
+    # Q01 was retained; Q02 was rerun as one shared intent/rewrite plan plus
+    # two final calls, instead of combining the stale partial row.
+    assert recovered_base.agent.llm.call_count == 4
+
+
+@pytest.mark.asyncio
 async def test_both_modes_use_same_memoryless_final_answer_configuration(tmp_path):
     runner = build_offline_runner()
     await runner.run(run_id="same-config", modes=("vector_only", "graph_rag"), output_root=tmp_path)

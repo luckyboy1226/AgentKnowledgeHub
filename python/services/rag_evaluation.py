@@ -12,7 +12,7 @@ import statistics
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
 from agents.qa_agent import EvaluationQueryPlan, QAAgent, RetrievalMode
@@ -609,14 +609,45 @@ class RAGEvaluationRunner:
         self.offline = offline
 
     async def run(
-        self, *, run_id: str, modes: Iterable[RetrievalMode | str], output_root: str | Path
+        self,
+        *,
+        run_id: str,
+        modes: Iterable[RetrievalMode | str],
+        output_root: str | Path,
+        existing_results: Sequence[dict[str, Any]] = (),
     ) -> dict[str, Any]:
+        """Run complete question pairs, preserving only completed pairs on recovery.
+
+        A vector/graph comparison is only fair when both modes share one query
+        plan.  If an interruption happens between modes, recovery reruns that
+        whole question instead of combining a new plan with one stale result.
+        """
         if not _SAFE_RUN_ID.fullmatch(run_id):
             raise ValueError("run_id must be a safe identifier")
         selected_modes = tuple(RetrievalMode(mode) for mode in modes)
         if not selected_modes:
             raise ValueError("at least one evaluation mode is required")
-        results: list[dict[str, Any]] = []
+        selected_mode_names = {mode.value for mode in selected_modes}
+        rows_by_question: dict[str, list[dict[str, Any]]] = {}
+        for row in existing_results:
+            if not isinstance(row, dict):
+                continue
+            question_id = str(row.get("question_id") or "")
+            if question_id and str(row.get("mode") or "") in selected_mode_names:
+                rows_by_question.setdefault(question_id, []).append(dict(row))
+        completed_question_ids = {
+            question_id
+            for question_id, rows in rows_by_question.items()
+            if {str(row.get("mode")) for row in rows} == selected_mode_names
+            and len(rows) == len(selected_mode_names)
+        }
+        # Drop incomplete pairs from an interrupted process.  They will be
+        # recomputed with one shared plan when the run resumes.
+        results: list[dict[str, Any]] = [
+            row
+            for question_id in sorted(completed_question_ids)
+            for row in rows_by_question[question_id]
+        ]
         output_dir = Path(output_root) / run_id
         payload: dict[str, Any] = {
             "run_id": run_id,
@@ -633,15 +664,21 @@ class RAGEvaluationRunner:
             if self.offline else "Authorized S4 synthetic-only real evaluation. Results are not a general production benchmark.",
         }
         for case in self.cases:
+            if case.question_id in completed_question_ids:
+                continue
             plan_before = _counter_value(self.agent.llm, "call_count")
             plan = await self.agent.build_evaluation_query_plan(
                 case.question, run_id=run_id, question_id=case.question_id, top_k=5
             )
             plan_after = _counter_value(self.agent.llm, "call_count")
+            case_rows: list[dict[str, Any]] = []
             for mode in selected_modes:
-                results.append(await self._run_case(case, plan, mode, plan_before, plan_after))
-                payload["summary"] = self._summarize(results)
-                self.write_reports(output_dir, payload)
+                case_rows.append(await self._run_case(case, plan, mode, plan_before, plan_after))
+            # Persist only complete pairs.  If process execution stops during
+            # a question, a later --recover-run never mixes query plans.
+            results.extend(case_rows)
+            payload["summary"] = self._summarize(results)
+            self.write_reports(output_dir, payload)
         return payload
 
     async def _run_case(

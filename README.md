@@ -747,6 +747,24 @@ VectorStore 和 KnowledgeGraph，不能证明真实模型质量。历史 S4 4 �
 `--s4-baseline`。真实 benchmark 必须单独获得授权，使用上传后得到的 UUID allowlist，并在结束后
 仅按本轮实际 document IDs 精确清理。
 
+真实评测若因 Provider、网络或进程中断，runner 会保留本轮 `ingestion-state.json`、已上传的 UUID
+allowlist 与已完成的完整题对；它不会自动删除临时向量或图谱数据。恢复必须使用同一份经过校验的
+fixture，且只运行尚未完成的问题：
+
+```powershell
+conda run -n kghub python scripts/run-rag-eval.py --real --authorized-s4 `
+  --recover-run <run_id> --benchmark-dir benchmarks/enterprise_20docs_60q_expanded
+```
+
+恢复不会重新上传文档，也不会重新执行已完成的题对。若决定放弃中断的实验，才显式执行精确清理：
+
+```powershell
+conda run -n kghub python scripts/run-rag-eval.py --real --authorized-s4 --cleanup-run <run_id>
+```
+
+该命令只接受该 run 的持久化 UUID，拒绝 scope 不匹配、空 ID 或非 UUID 的删除目标。完整跑完时仍会
+自动清理本轮临时 Chroma/Neo4j 数据；MongoDB 的 tombstone 与 operation 审计按设计保留。
+
 ---
 
 ## ❓ 常见问题 FAQ

@@ -98,6 +98,13 @@ async def test_recovery_observes_existing_operation_without_post(tmp_path, monke
     state = {"run_id": "run-recover", "documents": [
         runner._new_upload_state("run-recover", BenchmarkDocument("D03", "D03.txt", "body"), "s4-eval-run-recover-D03"),
     ], "cleanup_document_ids": []}
+    fixture_documents = tuple(
+        BenchmarkDocument(name, filename, content)
+        for name, filename, content in runner.SYNTHETIC_DOCUMENTS
+    )
+    state["fixture"] = {
+        "fingerprint": runner._fixture_fingerprint(fixture_documents, None),
+    }
     state["documents"][0]["request_state"] = "ambiguous"
     runner._write_ingestion_state(output_dir, state)
 
@@ -115,10 +122,33 @@ async def test_recovery_observes_existing_operation_without_post(tmp_path, monke
 
     monkeypatch.setattr(runner, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(runner.httpx, "AsyncClient", _AsyncClient)
-    assert await runner._recover_real_ingestion("run-recover") == 0
+    async def verify_ready(_client, _documents):
+        return True
+
+    async def resume(**_kwargs):
+        return True
+
+    async def cleanup(_run_id):
+        return 0
+
+    monkeypatch.setattr(runner, "_verify_ready_documents", verify_ready)
+    monkeypatch.setattr(runner, "_run_or_resume_evaluation", resume)
+    monkeypatch.setattr(runner, "_cleanup_saved_run", cleanup)
+    assert await runner._recover_real_ingestion("run-recover", None) == 0
     persisted = runner._load_ingestion_state(output_dir)
     assert persisted["cleanup_document_ids"] == ["doc-late"]
     assert all(call[0] == "GET" for call in client.calls)
+
+
+def test_cleanup_targets_require_exact_saved_scope():
+    runner = _runner_module()
+    state = {"documents": [
+        {"document_id": "11111111-1111-1111-1111-111111111111", "request_state": "ready"},
+    ], "scope": {"allowed_document_ids": ["11111111-1111-1111-1111-111111111111"]}}
+    assert runner._safe_cleanup_targets(state) == ("11111111-1111-1111-1111-111111111111",)
+    state["scope"]["allowed_document_ids"] = ["22222222-2222-2222-2222-222222222222"]
+    with pytest.raises(ValueError, match="cleanup scope"):
+        runner._safe_cleanup_targets(state)
 
 
 def test_failed_or_ambiguous_observation_never_claims_ready():

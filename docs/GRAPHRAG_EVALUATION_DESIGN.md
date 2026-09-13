@@ -212,3 +212,20 @@ Top-K、平均/P50/P95 耗时，以及 Chat、Embedding、Neo4j 的逻辑调用�
 `--offline` 仅使用 fake provider/store/graph，输出仍写入被忽略的
 `.runtime/evaluation/<run_id>/`。真实模式仍需要单独授权、实际上传得到的 UUID allowlist，且清理
 循环仅处理本轮实际创建的 document IDs；该命令不会把 fixture 内容或结果加入 Git。
+
+### 中断恢复与显式清理
+
+真实运行先以原子方式写入 `ingestion-state.json`，其中仅保存 run ID、fixture 指纹、内容哈希、
+operation ID、安全文件名、实际返回的 document ID、allowlist 和已完成 question pair ID；不保存
+fixture 正文、凭据或 endpoint。Provider/网络异常、中断或进程退出后，runner 将 lifecycle 标为
+`interrupted`，**不会**自动删除已上传的临时数据。
+
+`--recover-run <run_id> --benchmark-dir <fixture-root>` 必须使用指纹一致的同一 fixture。它先只读确认
+所有保存的 UUID 仍为 `ready`，再复用原 allowlist；只执行尚未完成的完整 question pair。若中断发生在
+Vector RAG 与 GraphRAG 之间，该题的临时半对结果会被舍弃并整体重跑，从而仍共享同一次 query plan，避免
+把不同计划的两种模式拼接比较。恢复路径绝不重新 POST 上传。
+
+只有两种情形允许删除临时 Chroma/Neo4j 数据：全部 question pair 成功后自动精确清理，或用户显式运行
+`--cleanup-run <run_id>`。后者只读取该状态文件中的非空 UUID，并要求它与持久 allowlist 精确一致；不做
+全库清理、不接受任意 document ID，也不调用全局 reconcile。MongoDB tombstone、版本与 operation audit
+按版本化写入语义保留。

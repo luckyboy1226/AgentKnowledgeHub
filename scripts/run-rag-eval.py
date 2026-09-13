@@ -38,7 +38,7 @@ from providers.factory import create_chat_provider, create_embedding_provider  #
 from services.evaluation_scope import EvaluationScope  # noqa: E402
 from services.knowledge_graph import KnowledgeGraphService  # noqa: E402
 from services.rag_evaluation import (  # noqa: E402
-    BenchmarkDocument, EvaluationFixture, RAGEvaluationRunner, SYNTHETIC_DOCUMENTS,
+    BenchmarkDocument, EvaluationFixture, EVALUATION_CASES, RAGEvaluationRunner, SYNTHETIC_DOCUMENTS,
     atomic_json, load_evaluation_fixture, rescore_payload_v2, run_offline_sync,
     write_rescore_reports,
 )
@@ -270,6 +270,236 @@ def exact_cleanup_document_ids(created: list[dict[str, Any]]) -> tuple[str, ...]
     return document_ids
 
 
+def _fixture_fingerprint(documents: tuple[BenchmarkDocument, ...], cases: tuple[Any, ...] | None) -> str:
+    """Bind recovery to one reviewed fixture without persisting its text."""
+    safe_manifest = {
+        "documents": [
+            {
+                "fixture_document_id": document.document_id,
+                "filename": Path(document.filename).name,
+                "content_hash": hashlib.sha256(document.content.encode("utf-8")).hexdigest(),
+            }
+            for document in documents
+        ],
+        "question_ids": [str(case.question_id) for case in cases or EVALUATION_CASES],
+    }
+    encoded = json.dumps(safe_manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_completed_results(output_dir: Path) -> list[dict[str, Any]]:
+    """Read only the durable report rows; absent/invalid reports mean none."""
+    try:
+        payload = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    rows = payload.get("results") if isinstance(payload, dict) else None
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _complete_question_ids(results: list[dict[str, Any]], modes: tuple[RetrievalMode, ...]) -> list[str]:
+    expected = {mode.value for mode in modes}
+    by_question: dict[str, set[str]] = {}
+    for row in results:
+        question_id, mode = str(row.get("question_id") or ""), str(row.get("mode") or "")
+        if question_id and mode in expected:
+            by_question.setdefault(question_id, set()).add(mode)
+    return sorted(question_id for question_id, found in by_question.items() if found == expected)
+
+
+def _ready_documents_from_state(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        item for item in state.get("documents", [])
+        if item.get("request_state") == "ready" and isinstance(item.get("document_id"), str)
+    ]
+
+
+async def _verify_ready_documents(client: Any, documents: list[dict[str, Any]]) -> bool:
+    """Fail closed if a recovery scope no longer points at ready documents."""
+    for item in documents:
+        status, body, _ = await _api_json(client, "GET", f"/api/documents/{item['document_id']}")
+        if status != 200 or body.get("status") != "ready":
+            return False
+        if body.get("logical_key") != item.get("logical_key") or body.get("namespace") != "default":
+            return False
+    return True
+
+
+async def _run_or_resume_evaluation(
+    *,
+    run_id: str,
+    output_dir: Path,
+    state: dict[str, Any],
+    metadata: dict[str, Any],
+    fixture: EvaluationFixture | None,
+    documents: tuple[BenchmarkDocument, ...],
+    cases: tuple[Any, ...] | None,
+) -> bool:
+    """Evaluate only missing complete question pairs for a verified saved scope."""
+    ready = _ready_documents_from_state(state)
+    if len(ready) != len(documents):
+        metadata["error_summary"] = "recovery_scope_documents_not_ready"
+        return False
+    allowed_ids = sorted(str(item["document_id"]) for item in ready)
+    saved_scope = state.get("scope")
+    if saved_scope is not None and (
+        not isinstance(saved_scope, dict)
+        or saved_scope.get("scope_verified") is not True
+        or sorted(saved_scope.get("allowed_document_ids") or []) != allowed_ids
+    ):
+        metadata["error_summary"] = "saved_scope_mismatch"
+        return False
+    scope = EvaluationScope.from_uploaded_document_ids(run_id, allowed_ids)
+    state["scope"] = {
+        "scope_verified": scope.is_verified(),
+        "allowed_document_ids": allowed_ids,
+    }
+    evaluation = state.setdefault("evaluation", {})
+    evaluation.update({"status": "running", "interruption": None})
+    _write_ingestion_state(output_dir, state)
+
+    graph: KnowledgeGraphService | None = None
+    try:
+        runner, _, graph, chat, embeddings = await _build_real_runner(scope)
+        if cases is not None:
+            runner = RAGEvaluationRunner(runner.agent, cases, scope=scope, offline=False)
+        payload = await runner.run(
+            run_id=run_id,
+            modes=("vector_only", "graph_rag"),
+            output_root=output_dir.parent,
+            existing_results=_load_completed_results(output_dir),
+        )
+        all_sources_scoped = all(
+            source.get("document_id") in scope.allowed_document_ids
+            for row in payload["results"]
+            for source in row["sources"]
+        )
+        vector_only_graph_calls = sum(
+            int(row.get("model_call_counts", {}).get("graph_calls") or 0)
+            for row in payload["results"] if row["mode"] == "vector_only"
+        )
+        expected_result_count = len(cases or runner.cases) * 2
+        completed_ids = _complete_question_ids(payload["results"], (RetrievalMode.VECTOR_ONLY, RetrievalMode.GRAPH_RAG))
+        evaluation.update({
+            "status": "completed" if len(payload["results"]) == expected_result_count else "interrupted",
+            "completed_question_ids": completed_ids,
+            "completed_result_count": len(payload["results"]),
+            "expected_result_count": expected_result_count,
+        })
+        metadata["evaluation"] = {
+            "results_count": len(payload["results"]),
+            "all_sources_scoped": all_sources_scoped,
+            "vector_only_graph_calls": vector_only_graph_calls,
+            "chat_logical_calls_current_process": chat.call_count,
+            "embedding_query_logical_calls_current_process": embeddings.query_calls,
+            "chat_retry_observability": "SDK-internal retries are not externally observable",
+        }
+        if len(payload["results"]) != expected_result_count or not all_sources_scoped or vector_only_graph_calls:
+            metadata["error_summary"] = "evaluation_scope_or_coverage_failed"
+            return False
+        return True
+    except Exception as exc:
+        # The per-question report is already atomically persisted by the
+        # runner.  Preserve scope and exact IDs for --recover-run.
+        evaluation.update({
+            "status": "interrupted",
+            "completed_question_ids": _complete_question_ids(
+                _load_completed_results(output_dir), (RetrievalMode.VECTOR_ONLY, RetrievalMode.GRAPH_RAG)
+            ),
+            "completed_result_count": len(_load_completed_results(output_dir)),
+            "interruption": _safe_error(exc),
+        })
+        metadata["error_summary"] = "evaluation_interrupted"
+        metadata["interruption_type"] = _safe_error(exc)
+        return False
+    finally:
+        _write_ingestion_state(output_dir, state)
+        if graph is not None:
+            await graph.close()
+
+
+def _safe_cleanup_targets(state: dict[str, Any]) -> tuple[str, ...]:
+    """Return only exact ready UUIDs persisted by this run's ingestion state."""
+    ready = _ready_documents_from_state(state)
+    targets = exact_cleanup_document_ids(ready)
+    try:
+        targets = tuple(str(uuid.UUID(document_id)) for document_id in targets)
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValueError("cleanup requires UUID document IDs") from exc
+    scope = state.get("scope")
+    if isinstance(scope, dict) and scope.get("allowed_document_ids") is not None:
+        if sorted(scope.get("allowed_document_ids") or []) != sorted(targets):
+            raise ValueError("cleanup scope does not match exact ready documents")
+    return targets
+
+
+async def _cleanup_saved_run(run_id: str) -> int:
+    """Explicitly delete only IDs durably recorded for one interrupted run."""
+    output_dir = PROJECT_ROOT / ".runtime" / "evaluation" / run_id
+    try:
+        state = _load_ingestion_state(output_dir)
+        if state.get("run_id") != run_id:
+            return 1
+        targets = _safe_cleanup_targets(state)
+    except ValueError:
+        return 1
+    if not targets:
+        return 1
+    metadata_path = output_dir / "safe-run-metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        metadata = {"run_id": run_id, "cleanup": []}
+    metadata.setdefault("cleanup", [])
+    state["lifecycle"] = "cleanup_running"
+    _write_ingestion_state(output_dir, state)
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(UPLOAD_RESPONSE_TIMEOUT_SECONDS, connect=10)) as client:
+        for document_id in targets:
+            item = next(item for item in state["documents"] if item.get("document_id") == document_id)
+            if item.get("request_state") == "deleted":
+                continue
+            status, body, elapsed = await _api_json(client, "DELETE", f"/api/documents/{document_id}")
+            cleanup = {
+                "document_id": document_id,
+                "http_status": status,
+                "elapsed_ms": elapsed,
+                "operation_id": body.get("operation_id"),
+                "status": body.get("status"),
+            }
+            _update_upload_state(item, request_state="cleanup_pending", cleanup_operation_id=cleanup["operation_id"])
+            _write_ingestion_state(output_dir, state)
+            if status < 200 or status >= 300 or not cleanup["operation_id"]:
+                cleanup["error_summary"] = body.get("detail") or "delete_failed"
+            else:
+                operation = await _wait_operation(client, cleanup["operation_id"], output_dir)
+                cleanup["operation_status"] = operation.get("status")
+                if cleanup["operation_status"] != "succeeded":
+                    cleanup["error_summary"] = "cleanup_not_succeeded"
+            _update_upload_state(
+                item,
+                request_state="deleted" if cleanup.get("operation_status") == "succeeded" else "cleanup_failed",
+                terminal_status=cleanup.get("operation_status"),
+                error_summary=cleanup.get("error_summary"),
+            )
+            metadata["cleanup"] = [row for row in metadata["cleanup"] if row.get("document_id") != document_id]
+            metadata["cleanup"].append(cleanup)
+            _write_ingestion_state(output_dir, state)
+            atomic_json(metadata_path, metadata)
+
+    succeeded = all(
+        item.get("request_state") == "deleted"
+        for item in state["documents"]
+        if item.get("document_id") in targets
+    )
+    state["lifecycle"] = "cleaned" if succeeded else "cleanup_pending"
+    _write_ingestion_state(output_dir, state)
+    metadata["cleanup_requested_explicitly"] = True
+    metadata["cleanup_completed"] = succeeded
+    atomic_json(metadata_path, metadata)
+    return 0 if succeeded else 1
+
+
 async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> int:
     output_dir = PROJECT_ROOT / ".runtime" / "evaluation" / run_id
     if output_dir.exists() and any(output_dir.iterdir()):
@@ -277,7 +507,21 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
         # rather than overwrite it with a second upload attempt.
         return 1
     output_dir.mkdir(parents=True, exist_ok=True)
-    metadata: dict[str, Any] = {"run_id": run_id, "mode": "authorized_real_s4", "started_at_utc": datetime.now(UTC).isoformat(), "uploaded_documents": [], "operations": [], "scope_verified": False, "cleanup": []}
+    metadata: dict[str, Any] = {
+        "run_id": run_id,
+        "mode": "authorized_real_s4",
+        "started_at_utc": datetime.now(UTC).isoformat(),
+        "uploaded_documents": [],
+        "operations": [],
+        "scope_verified": False,
+        "cleanup": [],
+        # Provider identity is useful for comparing runs, while endpoint and
+        # credentials remain intentionally absent from persisted evidence.
+        "chat_provider": settings.chat_config.provider,
+        "chat_model": settings.chat_config.model,
+        "embedding_provider": settings.embedding_config.provider,
+        "embedding_model": settings.embedding_config.model,
+    }
     atomic_json(output_dir / "safe-run-metadata.json", metadata)
     created: list[dict[str, Any]] = []
     success = False
@@ -297,13 +541,22 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
         )
         cases = fixture.cases if fixture else None
         ingestion_state = {
+            "schema_version": 2,
             "run_id": run_id,
             "created_at": datetime.now(UTC).isoformat(),
+            "lifecycle": "ingesting",
+            "fixture": {
+                "document_count": len(documents),
+                "case_count": len(cases or EVALUATION_CASES),
+                "fingerprint": _fixture_fingerprint(documents, cases),
+            },
             "documents": [
                 _new_upload_state(run_id, document, f"s4-eval-{run_id}-{document.document_id}")
                 for document in documents
             ],
             "cleanup_document_ids": [],
+            "scope": None,
+            "evaluation": {"status": "pending", "completed_question_ids": [], "completed_result_count": 0},
         }
         _write_ingestion_state(output_dir, ingestion_state)
         for document in documents:
@@ -370,32 +623,31 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
             atomic_json(output_dir / "safe-run-metadata.json", metadata)
 
         if len(created) == len(documents) and not metadata.get("error_summary"):
-            scope = EvaluationScope.from_uploaded_document_ids(run_id, [item["document_id"] for item in created])
-            if not scope.is_verified() or len(scope.allowed_document_ids) != len(documents):
-                metadata["error_summary"] = "scope_verification_failed"
-            else:
-                metadata["scope_verified"], metadata["allowed_document_ids_count"] = True, len(scope.allowed_document_ids)
-                atomic_json(output_dir / "safe-run-metadata.json", metadata)
-                graph: KnowledgeGraphService | None = None
-                try:
-                    runner, _, graph, chat, embeddings = await _build_real_runner(scope)
-                    if cases is not None:
-                        runner = RAGEvaluationRunner(runner.agent, cases, scope=scope, offline=False)
-                    payload = await runner.run(run_id=run_id, modes=("vector_only", "graph_rag"), output_root=output_dir.parent)
-                    all_sources_scoped = all(source.get("document_id") in scope.allowed_document_ids for row in payload["results"] for source in row["sources"])
-                    vector_only_graph_calls = sum(int(row.get("model_call_counts", {}).get("graph_calls") or 0) for row in payload["results"] if row["mode"] == "vector_only")
-                    metadata["evaluation"] = {"results_count": len(payload["results"]), "all_sources_scoped": all_sources_scoped, "vector_only_graph_calls": vector_only_graph_calls, "chat_logical_calls": chat.call_count, "embedding_query_logical_calls": embeddings.query_calls, "chat_retry_observability": "SDK-internal retries are not externally observable"}
-                    success = len(payload["results"]) == len(cases or runner.cases) * 2 and all_sources_scoped and vector_only_graph_calls == 0
-                    if not success:
-                        metadata["error_summary"] = "evaluation_scope_or_coverage_failed"
-                except Exception as exc:
-                    metadata["error_summary"] = _safe_error(exc)
-                finally:
-                    if graph is not None:
-                        await graph.close()
-                atomic_json(output_dir / "safe-run-metadata.json", metadata)
+            ingestion_state["lifecycle"] = "evaluating"
+            success = await _run_or_resume_evaluation(
+                run_id=run_id,
+                output_dir=output_dir,
+                state=ingestion_state,
+                metadata=metadata,
+                fixture=fixture,
+                documents=documents,
+                cases=cases,
+            )
+            metadata["scope_verified"] = bool((ingestion_state.get("scope") or {}).get("scope_verified"))
+            metadata["allowed_document_ids_count"] = len((ingestion_state.get("scope") or {}).get("allowed_document_ids") or [])
+            ingestion_state["lifecycle"] = "evaluation_completed" if success else "interrupted"
+            _write_ingestion_state(output_dir, ingestion_state)
+            atomic_json(output_dir / "safe-run-metadata.json", metadata)
+        elif not metadata.get("error_summary"):
+            metadata["error_summary"] = "ingestion_incomplete"
+            ingestion_state["lifecycle"] = "interrupted"
+            _write_ingestion_state(output_dir, ingestion_state)
 
-        for document_id in exact_cleanup_document_ids(created) if created else ():
+        # Preserve exact document IDs after any interruption.  Cleanup is
+        # automatic only after a complete comparison, or explicit via
+        # --cleanup-run.  This makes --recover-run safe and meaningful.
+        cleanup_ids = exact_cleanup_document_ids(created) if success and created else ()
+        for document_id in cleanup_ids:
             status, body, elapsed = await _api_json(client, "DELETE", f"/api/documents/{document_id}")
             cleanup = {"document_id": document_id, "http_status": status, "elapsed_ms": elapsed, "operation_id": body.get("operation_id"), "status": body.get("status")}
             state = next((item for item in ingestion_state["documents"] if item.get("document_id") == document_id), None)
@@ -425,7 +677,15 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
             metadata["cleanup"].append(cleanup)
             atomic_json(output_dir / "safe-run-metadata.json", metadata)
 
-        if created:
+        if created and not success:
+            metadata["cleanup_deferred"] = {
+                "reason": "evaluation_or_ingestion_interrupted",
+                "document_ids_count": len(created),
+                "next_action": "use --recover-run to resume or --cleanup-run for explicit cleanup",
+            }
+            atomic_json(output_dir / "safe-run-metadata.json", metadata)
+
+        if metadata["cleanup"]:
             check_vectors, check_graph = VectorStoreService(create_embedding_provider(settings)), KnowledgeGraphService()
             await check_vectors.init()
             await check_graph.init()
@@ -444,19 +704,19 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
         final_status, final_stats, _ = await _api_json(client, "GET", "/api/admin/stats")
         metadata["final"] = {"vector_total": final_stats.get("vector_store", {}).get("total_vectors") if final_status == 200 else None, "graph_entities": final_stats.get("knowledge_graph", {}).get("total_entities") if final_status == 200 else None, "graph_relations": final_stats.get("knowledge_graph", {}).get("total_relations") if final_status == 200 else None}
 
-    cleanup_ok = len(metadata["cleanup"]) == len(created) and all(item.get("operation_status") == "succeeded" and item.get("chroma_vector_count") == 0 and not any(item.get("neo4j", {}).values()) and item.get("mongo_tombstone_retained") for item in metadata["cleanup"])
+    cleanup_ok = success and len(metadata["cleanup"]) == len(created) and all(item.get("operation_status") == "succeeded" and item.get("chroma_vector_count") == 0 and not any(item.get("neo4j", {}).values()) and item.get("mongo_tombstone_retained") for item in metadata["cleanup"])
     metadata["completed_at_utc"] = datetime.now(UTC).isoformat()
     metadata["overall_pass"] = bool(success and cleanup_ok and not metadata.get("error_summary"))
     atomic_json(output_dir / "safe-run-metadata.json", metadata)
     return 0 if metadata["overall_pass"] else 1
 
 
-async def _recover_real_ingestion(run_id: str) -> int:
-    """Resume observation of a prior run without uploading any document again.
+async def _recover_real_ingestion(run_id: str, fixture: EvaluationFixture | None) -> int:
+    """Observe pending ingestion then resume only missing evaluation pairs.
 
-    This mode intentionally performs no POST.  It turns late server success
-    into a durable cleanup candidate; a future authorized cleanup step can use
-    only the exact document IDs recorded here.
+    This mode never replays multipart POST requests.  It requires the same
+    reviewed fixture and exact saved scope; if either is unavailable it stops
+    without widening retrieval or deleting anything.
     """
     output_dir = PROJECT_ROOT / ".runtime" / "evaluation" / run_id
     try:
@@ -464,6 +724,13 @@ async def _recover_real_ingestion(run_id: str) -> int:
     except ValueError:
         return 1
     if state.get("run_id") != run_id:
+        return 1
+    documents = fixture.documents if fixture else tuple(
+        BenchmarkDocument(name, filename, text) for name, filename, text in SYNTHETIC_DOCUMENTS
+    )
+    cases = fixture.cases if fixture else None
+    expected_fixture = state.get("fixture") or {}
+    if expected_fixture.get("fingerprint") != _fixture_fingerprint(documents, cases):
         return 1
     changed = False
     async with httpx.AsyncClient(timeout=httpx.Timeout(UPLOAD_RESPONSE_TIMEOUT_SECONDS, connect=10)) as client:
@@ -481,9 +748,37 @@ async def _recover_real_ingestion(run_id: str) -> int:
         if changed:
             _refresh_cleanup_manifest(state)
             _write_ingestion_state(output_dir, state)
-    # Recovery is deliberately observation-only.  It never guesses a delete
-    # target and it never replays the original multipart POST.
-    return 0 if all(item.get("request_state") in {"ready", "failed", "deleted", "cleanup_failed"} for item in state["documents"]) else 1
+        if not all(item.get("request_state") == "ready" for item in state["documents"]):
+            state["lifecycle"] = "interrupted"
+            _write_ingestion_state(output_dir, state)
+            return 1
+        if not await _verify_ready_documents(client, _ready_documents_from_state(state)):
+            state["lifecycle"] = "interrupted"
+            _write_ingestion_state(output_dir, state)
+            return 1
+        metadata_path = output_dir / "safe-run-metadata.json"
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            metadata = {"run_id": run_id, "cleanup": []}
+        completed = await _run_or_resume_evaluation(
+            run_id=run_id,
+            output_dir=output_dir,
+            state=state,
+            metadata=metadata,
+            fixture=fixture,
+            documents=documents,
+            cases=cases,
+        )
+        atomic_json(metadata_path, metadata)
+    # A recovered run only becomes eligible for automatic cleanup after every
+    # result pair is present.  Interrupted runs remain intact for another
+    # --recover-run or an explicit --cleanup-run.
+    if not completed:
+        state["lifecycle"] = "interrupted"
+        _write_ingestion_state(output_dir, state)
+        return 1
+    return await _cleanup_saved_run(run_id)
 
 
 def _rescore_v2(results_file: str) -> int:
@@ -521,20 +816,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--real", action="store_true")
     parser.add_argument("--authorized-s4", action="store_true")
-    parser.add_argument("--recover-run", metavar="RUN_ID", help="observe a prior ingestion state without replaying POST")
+    parser.add_argument("--recover-run", metavar="RUN_ID", help="resume only missing question pairs; never replay POST")
+    parser.add_argument("--cleanup-run", metavar="RUN_ID", help="explicitly clean exact IDs saved by an interrupted run")
     parser.add_argument("--rescore", metavar="RESULTS_JSON")
     parser.add_argument("--benchmark-dir", metavar="DIR", help="read a reviewed, immutable benchmark fixture from DIR")
     parser.add_argument("--s4-baseline", action="store_true", help="use the historic built-in 4-document S4 fixture")
     parser.add_argument("--run-id")
     args = parser.parse_args(argv)
     if args.rescore:
-        if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.s4_baseline or args.recover_run:
+        if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.s4_baseline or args.recover_run or args.cleanup_run:
             parser.error("--rescore cannot be combined with evaluation execution options")
         return _rescore_v2(args.rescore)
-    if args.recover_run:
+    if args.recover_run and args.cleanup_run:
+        parser.error("choose only one of --recover-run or --cleanup-run")
+    if args.cleanup_run:
         if not args.real or not args.authorized_s4 or args.offline or args.run_id or args.benchmark_dir or args.s4_baseline:
-            parser.error("--recover-run requires --real --authorized-s4 and cannot be combined with evaluation options")
-        return asyncio.run(_recover_real_ingestion(args.recover_run))
+            parser.error("--cleanup-run requires --real --authorized-s4 and no evaluation options")
+        return asyncio.run(_cleanup_saved_run(args.cleanup_run))
+    if args.recover_run:
+        if not args.real or not args.authorized_s4 or args.offline or args.run_id:
+            parser.error("--recover-run requires --real --authorized-s4 and cannot use --run-id")
     if not args.offline and not args.real:
         parser.error("real evaluation is refused without --real and --authorized-s4")
     if args.offline and args.real:
@@ -565,6 +866,8 @@ def main(argv: list[str] | None = None) -> int:
         for mode, summary in payload["summary"].items():
             print(f"{mode}: questions={summary['questions']} accuracy={summary['question_accuracy']:.3f}")
         return 0
+    if args.recover_run:
+        return asyncio.run(_recover_real_ingestion(args.recover_run, fixture))
     return asyncio.run(_run_real(run_id, fixture))
 
 
