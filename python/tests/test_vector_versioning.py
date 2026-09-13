@@ -13,6 +13,8 @@ from services.vector_store import VectorStoreService
 
 
 class FakeEmbeddings:
+    provider_name = "qwen"
+    model_name = "fake-embedding"
     dimensions = 3
 
     async def aembed_documents(self, texts):
@@ -91,6 +93,34 @@ def vector_store():
     service._backend = "chroma"
     service._store = FakeCollection()
     return service
+
+
+def test_collection_name_and_identity_are_fail_closed():
+    with pytest.raises(ValueError):
+        VectorStoreService(FakeEmbeddings(), collection_name="../unsafe")
+    service = VectorStoreService(
+        FakeEmbeddings(), collection_name="safe_collection", embedding_space_id="qwen:fake-embedding:3"
+    )
+    metadata = service._identity_metadata()
+    service._validate_collection_identity(metadata)
+    metadata["embedding_dimensions"] = 1536
+    with pytest.raises(Exception, match="embedding_dimension_mismatch"):
+        service._validate_collection_identity(metadata)
+
+
+def test_new_embedding_space_refuses_legacy_collection_metadata():
+    service = VectorStoreService(
+        FakeEmbeddings(), collection_name="new_space", embedding_space_id="qwen:fake-embedding:3"
+    )
+    with pytest.raises(Exception, match="legacy_collection_write_refused"):
+        service._validate_collection_identity({"hnsw:space": "cosine"})
+
+
+@pytest.mark.asyncio
+async def test_stats_fail_closed_on_collection_identity_mismatch(vector_store):
+    vector_store._store.metadata = vector_store._identity_metadata() | {"embedding_model": "other-model"}
+    with pytest.raises(Exception, match="embedding_model_mismatch"):
+        await vector_store.get_stats()
 
 
 def chunks(source=Path(r"C:\private\uploads\policy.txt")):

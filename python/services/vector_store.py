@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+import re
 from typing import Any
 from uuid import UUID
 
@@ -19,10 +20,54 @@ class VectorStoreService:
     SEARCH_OVERFETCH_FACTOR = 5
     SEARCH_MAX_CANDIDATES = 50
 
-    def __init__(self, embeddings: EmbeddingProvider) -> None:
+    _COLLECTION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,127}$")
+
+    def __init__(
+        self,
+        embeddings: EmbeddingProvider,
+        *,
+        collection_name: str | None = None,
+        embedding_space_id: str | None = None,
+    ) -> None:
         self.embeddings = embeddings
         self._store: Any = None
         self._backend = settings.vector_store_type
+        self.collection_name = collection_name or settings.chroma_collection_name or self.COLLECTION_NAME
+        if not self._COLLECTION_NAME.fullmatch(self.collection_name):
+            raise ValueError("Invalid Chroma collection name")
+        self.embedding_space_id = embedding_space_id or settings.resolved_embedding_space_id
+
+    def _identity_metadata(self) -> dict[str, Any]:
+        return {
+            "hnsw:space": "cosine",
+            "embedding_provider": self.embeddings.provider_name,
+            "embedding_model": self.embeddings.model_name,
+            "embedding_dimensions": int(self.embeddings.dimensions),
+            "embedding_space_id": self.embedding_space_id,
+            "schema_version": 1,
+        }
+
+    def _validate_collection_identity(self, metadata: dict[str, Any] | None) -> None:
+        metadata = dict(metadata or {})
+        expected = self._identity_metadata()
+        # The original collection predates identity metadata.  It remains
+        # readable only for its matching legacy space; it is never a target
+        # for a new configured model/dimension.
+        identity_keys = set(expected) - {"hnsw:space", "schema_version"}
+        if not identity_keys.intersection(metadata):
+            if self.collection_name == self.COLLECTION_NAME and self.embeddings.dimensions == 1536:
+                return
+            raise EmbeddingProviderError("legacy_collection_write_refused")
+        if metadata.get("embedding_provider") != expected["embedding_provider"]:
+            raise EmbeddingProviderError("collection_identity_mismatch")
+        if metadata.get("embedding_model") != expected["embedding_model"]:
+            raise EmbeddingProviderError("embedding_model_mismatch")
+        if metadata.get("embedding_dimensions") != expected["embedding_dimensions"]:
+            raise EmbeddingProviderError("embedding_dimension_mismatch")
+        if metadata.get("embedding_space_id") != expected["embedding_space_id"]:
+            raise EmbeddingProviderError("embedding_space_mismatch")
+        if metadata.get("hnsw:space") != "cosine":
+            raise EmbeddingProviderError("embedding_space_mismatch")
 
     # ── initialization ───────────────────────────────────────
 
@@ -41,10 +86,8 @@ class VectorStoreService:
         client = chromadb.HttpClient(
             host=self.chroma_http_host(settings.chroma_host), port=settings.chroma_port
         )
-        self._store = client.get_or_create_collection(
-            name=self.COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
-        )
+        self._store = client.get_or_create_collection(name=self.collection_name, metadata=self._identity_metadata())
+        self._validate_collection_identity(getattr(self._store, "metadata", None))
 
     @staticmethod
     def chroma_http_host(host: str) -> str:
@@ -56,7 +99,7 @@ class VectorStoreService:
 
         self._store = PGVector(
             connection_string=settings.pgvector_dsn,
-            collection_name=self.COLLECTION_NAME,
+            collection_name=self.collection_name,
             embedding_function=self.embeddings,
         )
 
@@ -398,6 +441,10 @@ class VectorStoreService:
     async def get_stats(self) -> dict:
         """Return a small datastore health/statistics payload."""
         if self._backend == "chroma":
+            # Readiness calls this method.  Verify identity before exposing a
+            # healthy vector dependency so a changed provider/model/dimension
+            # cannot start against an incompatible collection.
+            self._validate_collection_identity(getattr(self._store, "metadata", None))
             count = self._store.count()
-            return {"backend": "chroma", "total_vectors": count, "collection": self.COLLECTION_NAME}
-        return {"backend": "pgvector", "collection": self.COLLECTION_NAME}
+            return {"backend": "chroma", "total_vectors": count, "collection": self.collection_name, "embedding_space": self.embedding_space_id}
+        return {"backend": "pgvector", "collection": self.collection_name, "embedding_space": self.embedding_space_id}

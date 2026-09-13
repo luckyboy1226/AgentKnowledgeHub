@@ -242,24 +242,28 @@ CHAT_MODEL=qwen-plus
 EMBEDDING_PROVIDER=qwen
 EMBEDDING_API_KEY=your-embedding-api-key
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-EMBEDDING_MODEL=text-embedding-v4
-EMBEDDING_DIMENSIONS=1536
+EMBEDDING_MODEL=qwen3.7-text-embedding-flash
+EMBEDDING_DIMENSIONS=1024
+CHROMA_COLLECTION_NAME=knowledge_chunks_qwen37_flash_1024
+EMBEDDING_SPACE_ID=qwen:qwen3.7-text-embedding-flash:1024
 ```
 
 DeepSeek 目前只用于 Chat，可与 Qwen Embedding 组合：将 `CHAT_PROVIDER` 设为 `deepseek`，并填写 DeepSeek 的 Chat 地址、密钥和模型；保留上面的 `EMBEDDING_*` 配置。不要把 DeepSeek 当作 Embedding Provider。
 
-阿里云百炼托管的 GLM-5.2 Chat 可保持 Qwen `text-embedding-v4`（1536 维）不变。百炼 Provider 会显式关闭 Thinking，避免结构化抽取和评测引入额外推理延迟；Base URL 应使用你的百炼业务空间和地域对应的 OpenAI 兼容地址：
+阿里云百炼 Chat 可与 Qwen `qwen3.7-text-embedding-flash`（1024 维）独立配置。百炼 Provider 会显式关闭 Thinking，避免结构化抽取和评测引入额外推理延迟；Base URL 应使用你的百炼业务空间和地域对应的 OpenAI 兼容地址：
 
 ```env
 CHAT_PROVIDER=bailian
 CHAT_API_KEY=your-bailian-api-key
 CHAT_BASE_URL=https://your-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
-CHAT_MODEL=glm-5.2
+CHAT_MODEL=qwen3.7-flash-2026-07-15
 EMBEDDING_PROVIDER=qwen
 EMBEDDING_API_KEY=your-existing-qwen-embedding-key
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-EMBEDDING_MODEL=text-embedding-v4
-EMBEDDING_DIMENSIONS=1536
+EMBEDDING_MODEL=qwen3.7-text-embedding-flash
+EMBEDDING_DIMENSIONS=1024
+CHROMA_COLLECTION_NAME=knowledge_chunks_qwen37_flash_1024
+EMBEDDING_SPACE_ID=qwen:qwen3.7-text-embedding-flash:1024
 ```
 
 仅替换本地 `python/.env` 的 Chat 配置；切换 Chat 模型不会重建或清空 Chroma collection。密钥、Base URL 和认证头不得写入运行证据或 Git。

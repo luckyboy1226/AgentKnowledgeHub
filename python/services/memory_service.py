@@ -28,6 +28,12 @@ class MemoryService:
     def __init__(self, embeddings: EmbeddingProvider, db_path: str = None):
         self.db_path = db_path or settings.memory_db_path
         self.embeddings = embeddings
+        # Long-term memory persists raw embedding vectors in SQLite.  Keep a
+        # first-class space identity alongside each vector so a later provider
+        # or model switch cannot silently compare incompatible vectors.
+        self.embedding_space_id = (
+            f"{embeddings.provider_name}:{embeddings.model_name}:{embeddings.dimensions}"
+        )
         self.short_term: List[MemoryEvent] = []
         self._init_database()
     
@@ -47,9 +53,16 @@ class MemoryService:
                 topics TEXT,
                 importance REAL,
                 embedding BLOB,
+                embedding_space_id TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Existing local databases predate the identity column.  The additive
+        # migration preserves their rows; rows without a space are deliberately
+        # not eligible for retrieval after an embedding-model switch.
+        columns = {row[1] for row in cursor.execute("PRAGMA table_info(memory_events)")}
+        if "embedding_space_id" not in columns:
+            cursor.execute("ALTER TABLE memory_events ADD COLUMN embedding_space_id TEXT")
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_profiles (
@@ -134,8 +147,8 @@ class MemoryService:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO memory_events 
-            (session_id, timestamp, user_input, agent_response, summary, topics, importance, embedding)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (session_id, timestamp, user_input, agent_response, summary, topics, importance, embedding, embedding_space_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             event.session_id,
             event.timestamp,
@@ -145,6 +158,7 @@ class MemoryService:
             json.dumps(event.topics, ensure_ascii=False),
             event.importance,
             pickle.dumps(event.embedding) if event.embedding else None,
+            self.embedding_space_id,
         ))
         conn.commit()
         conn.close()
@@ -159,7 +173,7 @@ class MemoryService:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT session_id, timestamp, user_input, agent_response, 
-                   summary, topics, importance, embedding
+                   summary, topics, importance, embedding, embedding_space_id
             FROM memory_events
             ORDER BY timestamp DESC
             LIMIT 100
@@ -177,7 +191,11 @@ class MemoryService:
                 embedding = pickle.loads(row[7]) if row[7] else None
             except Exception:
                 embedding = None
-            if not isinstance(embedding, list) or len(embedding) != self.embeddings.dimensions:
+            if (
+                row[8] != self.embedding_space_id
+                or not isinstance(embedding, list)
+                or len(embedding) != self.embeddings.dimensions
+            ):
                 continue
             
             similarity = np.dot(query_embedding, embedding) / (

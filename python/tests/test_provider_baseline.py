@@ -134,3 +134,25 @@ def test_services_reuse_injected_embedding_provider(tmp_path):
     provider = FakeEmbeddingProvider()
     assert VectorStoreService(provider).embeddings is provider
     assert MemoryService(provider, str(tmp_path / "memory.db")).embeddings is provider
+
+
+@pytest.mark.asyncio
+async def test_memory_does_not_mix_embedding_spaces(tmp_path):
+    from services.memory_models import MemoryEvent
+
+    database = str(tmp_path / "memory.db")
+    old_provider = FakeEmbeddingProvider(dimensions=3)
+    old_provider.provider_name = "qwen"
+    old_provider.model_name = "text-embedding-v4"
+    old_memory = MemoryService(old_provider, database)
+    await old_memory.add_long_term(
+        MemoryEvent(session_id="s", timestamp="2026-01-01T00:00:00", user_input="old", agent_response="old")
+    )
+
+    new_provider = FakeEmbeddingProvider(dimensions=2)
+    new_provider.provider_name = "qwen"
+    new_provider.model_name = "qwen3.7-text-embedding-flash"
+    new_memory = MemoryService(new_provider, database)
+    # Existing vectors remain in SQLite but cannot participate in a query in
+    # the newly configured embedding space.
+    assert await new_memory.retrieve_long_term("new") == []

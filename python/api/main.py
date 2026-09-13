@@ -50,6 +50,7 @@ from services.document_update_coordinator import (
     OperationIdentityConflictError,
 )
 from providers.factory import create_chat_provider, create_embedding_provider
+from providers.embeddings import EmbeddingProviderError
 from agents.doc_parser_agent import DocParserAgent
 from agents.knowledge_extract_agent import KnowledgeExtractAgent
 
@@ -856,13 +857,15 @@ async def readiness():
     if not vector_store or not memory_service or not document_registry or not document_coordinator:
         raise HTTPException(status_code=503, detail="Application dependencies are not initialized")
     try:
-        await vector_store.get_stats()
+        vector_stats = await vector_store.get_stats()
         await knowledge_graph.get_stats()
+    except EmbeddingProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
     except Exception:
         raise HTTPException(status_code=503, detail="A required datastore is unavailable") from None
     if not settings.has_usable_llm_key:
         raise HTTPException(status_code=503, detail="Chat provider configuration is incomplete")
-    return {"status": "ready", "providers": {"chat": settings.chat_config.provider, "embedding": settings.embedding_config.provider}}
+    return {"status": "ready", "providers": {"chat": settings.chat_config.provider, "embedding": settings.embedding_config.provider}, "vector": {"collection": vector_stats["collection"], "embedding_space": vector_stats.get("embedding_space")}}
 
 
 if __name__ == "__main__":

@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
+    chroma_collection_name: str = "knowledge_chunks"
+    embedding_space_id: str = ""
 
     # Provider request policy.  The ordinary chat value preserves the current
     # QA default; extraction has its own bounded policy below.
@@ -122,6 +124,12 @@ class Settings(BaseSettings):
             dimensions=self.embedding_dimensions,
             legacy=not explicit,
         )
+
+    @property
+    def resolved_embedding_space_id(self) -> str:
+        """Return the explicit identity used to prevent vector-space mixing."""
+        configured = self.embedding_space_id.strip()
+        return configured or f"{self.embedding_config.provider}:{self.embedding_config.model}:{self.embedding_dimensions}"
 
     @property
     def extraction_timeout_policy(self) -> ExtractionTimeoutPolicy:
