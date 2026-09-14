@@ -181,90 +181,103 @@ async def execute_migration(source: str, target: str, run_id: str, batch_size: i
     """
     import chromadb
 
-    if source == target:
-        raise RuntimeError("source_target_collection_must_differ")
-    if not (
-        settings.embedding_config.provider == "qwen"
-        and settings.embedding_config.model == "qwen3.7-text-embedding-flash"
-        and settings.embedding_dimensions == 1024
-        and settings.resolved_embedding_space_id == "qwen:qwen3.7-text-embedding-flash:1024"
-    ):
-        raise RuntimeError("target_embedding_profile_not_configured")
+    phase = "preflight"
+    state: dict[str, Any] | None = None
+    try:
+        if source == target:
+            raise RuntimeError("source_target_collection_must_differ")
+        if not (
+            settings.embedding_config.provider == "qwen"
+            and settings.embedding_config.model == "qwen3.7-text-embedding-flash"
+            and settings.embedding_dimensions == 1024
+            and settings.resolved_embedding_space_id == "qwen:qwen3.7-text-embedding-flash:1024"
+        ):
+            raise RuntimeError("target_embedding_profile_not_configured")
 
-    client = chromadb.HttpClient(host=VectorStoreService.chroma_http_host(settings.chroma_host), port=settings.chroma_port)
-    source_collection = client.get_collection(source)
-    rows = source_collection.get(include=["documents", "metadatas"])
-    ids = [str(value) for value in rows.get("ids", [])]
-    documents = rows.get("documents", [])
-    metadatas = rows.get("metadatas", [])
-    if not (len(ids) == len(documents) == len(metadatas)):
-        raise RuntimeError("source_collection_invalid")
+        phase = "source_read"
+        client = chromadb.HttpClient(host=VectorStoreService.chroma_http_host(settings.chroma_host), port=settings.chroma_port)
+        source_collection = client.get_collection(source)
+        rows = source_collection.get(include=["documents", "metadatas"])
+        ids = [str(value) for value in rows.get("ids", [])]
+        documents = rows.get("documents", [])
+        metadatas = rows.get("metadatas", [])
+        if not (len(ids) == len(documents) == len(metadatas)):
+            raise RuntimeError("source_collection_invalid")
 
-    state = load_state(run_id) if recover else None
-    if state is None:
-        state = make_state(source, target, run_id, ids, batch_size)
+        phase = "state_persist"
+        state = load_state(run_id) if recover else None
+        if state is None:
+            state = make_state(source, target, run_id, ids, batch_size)
+            atomic_json(state_path(run_id), state)
+        elif state.get("source_collection") != source or state.get("target_collection") != target:
+            raise RuntimeError("migration_state_identity_mismatch")
+
+        phase = "target_collection_initialize"
+        target_collection = client.get_or_create_collection(name=target, metadata=target_metadata())
+        if safe_metadata(target_collection.metadata) != target_metadata():
+            raise RuntimeError("target_collection_identity_mismatch")
+
+        phase = "provider_initialize"
+        provider = create_embedding_provider(settings)
+        completed = set(state.get("completed_vector_ids", []))
+        indexed = {vector_id: (document, metadata) for vector_id, document, metadata in zip(ids, documents, metadatas)}
+        pending = [vector_id for vector_id in state["planned_vector_ids"] if vector_id not in completed]
+        state["status"] = "processing"
         atomic_json(state_path(run_id), state)
-    elif state.get("source_collection") != source or state.get("target_collection") != target:
-        raise RuntimeError("migration_state_identity_mismatch")
-
-    target_collection = client.get_or_create_collection(name=target, metadata=target_metadata())
-    if safe_metadata(target_collection.metadata) != target_metadata():
-        raise RuntimeError("target_collection_identity_mismatch")
-
-    provider = create_embedding_provider(settings)
-    completed = set(state.get("completed_vector_ids", []))
-    indexed = {vector_id: (document, metadata) for vector_id, document, metadata in zip(ids, documents, metadatas)}
-    pending = [vector_id for vector_id in state["planned_vector_ids"] if vector_id not in completed]
-    state["status"] = "processing"
-    atomic_json(state_path(run_id), state)
-    for start in range(0, len(pending), batch_size):
-        batch_ids = pending[start : start + batch_size]
-        batch_rows = [indexed[vector_id] for vector_id in batch_ids]
-        texts = [text for text, _ in batch_rows]
-        if not all(isinstance(text, str) and text.strip() for text in texts):
-            state["failed_vector_ids"].extend(batch_ids)
-            state["status"] = "failed"
-            state["safe_error_category"] = "invalid_source_text"
+        for start in range(0, len(pending), batch_size):
+            batch_ids = pending[start : start + batch_size]
+            batch_rows = [indexed[vector_id] for vector_id in batch_ids]
+            texts = [text for text, _ in batch_rows]
+            if not all(isinstance(text, str) and text.strip() for text in texts):
+                state["failed_vector_ids"].extend(batch_ids)
+                state["status"] = "failed"
+                state["safe_error_category"] = "invalid_source_text"
+                state["updated_at_utc"] = datetime.now(UTC).isoformat()
+                atomic_json(state_path(run_id), state)
+                raise RuntimeError("invalid_source_text")
+            try:
+                phase = "embedding_request"
+                embeddings = await provider.aembed_documents(texts)
+                if any(len(vector) != settings.embedding_dimensions for vector in embeddings):
+                    raise RuntimeError("embedding_dimension_mismatch")
+                phase = "target_upsert"
+                target_collection.upsert(
+                    ids=batch_ids,
+                    embeddings=embeddings,
+                    documents=texts,
+                    metadatas=[dict(metadata or {}) for _, metadata in batch_rows],
+                )
+            except Exception as exc:
+                state["failed_vector_ids"].extend(batch_ids)
+                state["status"] = "failed"
+                state["safe_error_category"] = safe_error_category(exc)
+                state["updated_at_utc"] = datetime.now(UTC).isoformat()
+                atomic_json(state_path(run_id), state)
+                raise
+            completed.update(batch_ids)
+            state["completed_vector_ids"] = sorted(completed)
+            state["current_batch"] = start // batch_size + 1
             state["updated_at_utc"] = datetime.now(UTC).isoformat()
             atomic_json(state_path(run_id), state)
-            raise RuntimeError("invalid_source_text")
-        try:
-            embeddings = await provider.aembed_documents(texts)
-            if any(len(vector) != settings.embedding_dimensions for vector in embeddings):
-                raise RuntimeError("embedding_dimension_mismatch")
-            target_collection.upsert(
-                ids=batch_ids,
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=[dict(metadata or {}) for _, metadata in batch_rows],
-            )
-        except Exception as exc:
-            state["failed_vector_ids"].extend(batch_ids)
-            state["status"] = "failed"
-            state["safe_error_category"] = safe_error_category(exc)
-            state["updated_at_utc"] = datetime.now(UTC).isoformat()
-            atomic_json(state_path(run_id), state)
-            raise
-        completed.update(batch_ids)
-        state["completed_vector_ids"] = sorted(completed)
-        state["current_batch"] = start // batch_size + 1
+        state["status"] = "succeeded"
         state["updated_at_utc"] = datetime.now(UTC).isoformat()
         atomic_json(state_path(run_id), state)
-    state["status"] = "succeeded"
-    state["updated_at_utc"] = datetime.now(UTC).isoformat()
-    atomic_json(state_path(run_id), state)
-    verification = {
-        "run_id": run_id,
-        "source_collection": source,
-        "target_collection": target,
-        "expected_vector_count": len(state["planned_vector_ids"]),
-        "completed_vector_count": len(state["completed_vector_ids"]),
-        "target_vector_count": target_collection.count(),
-        "target_identity_matches": safe_metadata(target_collection.metadata) == target_metadata(),
-        "target_dimensions": settings.embedding_dimensions,
-    }
-    atomic_json(state_path(run_id).with_name("verification.json"), verification)
-    return verification
+        verification = {
+            "run_id": run_id,
+            "source_collection": source,
+            "target_collection": target,
+            "expected_vector_count": len(state["planned_vector_ids"]),
+            "completed_vector_count": len(state["completed_vector_ids"]),
+            "target_vector_count": target_collection.count(),
+            "target_identity_matches": safe_metadata(target_collection.metadata) == target_metadata(),
+            "target_dimensions": settings.embedding_dimensions,
+        }
+        atomic_json(state_path(run_id).with_name("verification.json"), verification)
+        return verification
+    except Exception as exc:
+        safe_failure = {"run_id": run_id, "status": "failed", "phase": phase, "error_type": type(exc).__name__, "safe_error_category": safe_error_category(exc)}
+        atomic_json(state_path(run_id).with_name("safe-failure.json"), safe_failure)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

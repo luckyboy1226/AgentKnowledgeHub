@@ -92,7 +92,12 @@ class VectorStoreService:
     @staticmethod
     def chroma_http_host(host: str) -> str:
         """Return a deterministic IPv4 endpoint for the local Compose service."""
-        return "127.0.0.1" if str(host).strip().lower() == "localhost" else str(host)
+        normalized = str(host).strip().lower()
+        # On Windows, environment resolution can produce the IPv6 loopback
+        # literal even when Compose publishes Chroma only on IPv4.
+        if normalized in {"localhost", "::1", "[::1]"}:
+            return "127.0.0.1"
+        return str(host)
 
     async def _init_pgvector(self) -> None:
         from langchain_community.vectorstores import PGVector

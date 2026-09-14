@@ -160,6 +160,8 @@ def test_metadata_scalar_conversion_handles_path_uuid_and_datetime(vector_store)
 
 def test_local_chroma_host_uses_ipv4_without_changing_remote_hosts(vector_store):
     assert vector_store.chroma_http_host("localhost") == "127.0.0.1"
+    assert vector_store.chroma_http_host("::1") == "127.0.0.1"
+    assert vector_store.chroma_http_host("[::1]") == "127.0.0.1"
     assert vector_store.chroma_http_host("chroma.internal") == "chroma.internal"
 
 

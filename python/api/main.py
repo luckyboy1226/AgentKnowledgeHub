@@ -865,7 +865,16 @@ async def readiness():
         raise HTTPException(status_code=503, detail="A required datastore is unavailable") from None
     if not settings.has_usable_llm_key:
         raise HTTPException(status_code=503, detail="Chat provider configuration is incomplete")
-    return {"status": "ready", "providers": {"chat": settings.chat_config.provider, "embedding": settings.embedding_config.provider}, "vector": {"collection": vector_stats["collection"], "embedding_space": vector_stats.get("embedding_space")}}
+    return {
+        "status": "ready",
+        "providers": {"chat": settings.chat_config.provider, "embedding": settings.embedding_config.provider},
+        "vector": {
+            "collection": vector_stats["collection"],
+            "embedding_space": vector_stats.get("embedding_space"),
+            "embedding_model": settings.embedding_config.model,
+            "embedding_dimensions": settings.embedding_dimensions,
+        },
+    }
 
 
 if __name__ == "__main__":
