@@ -893,3 +893,9 @@ lsof -i :8081
 ## 📄 License
 
 [MIT License](./LICENSE) — 可以自由使用、修改、分发，只需保留原始版权声明。
+# Benchmark diagnostic subsets
+
+For offline-only diagnosis, the evaluation runner can select reviewed fixture
+IDs with `--document-ids` and `--question-ids`. The full fixture is validated
+before selection; a selected question whose expected source is not selected is
+rejected. Subset reports are not comparable to full benchmark aggregates.

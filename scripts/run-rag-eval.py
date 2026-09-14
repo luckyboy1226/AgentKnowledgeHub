@@ -40,6 +40,7 @@ from services.knowledge_graph import KnowledgeGraphService  # noqa: E402
 from services.rag_evaluation import (  # noqa: E402
     BenchmarkDocument, EvaluationFixture, EVALUATION_CASES, RAGEvaluationRunner, SYNTHETIC_DOCUMENTS,
     atomic_json, load_evaluation_fixture, rescore_payload_v2, run_offline_sync,
+    select_evaluation_subset,
     write_rescore_reports,
 )
 from services.vector_store import VectorStoreService  # noqa: E402
@@ -50,11 +51,23 @@ DEFAULT_ENTERPRISE_BENCHMARK_DIR = PROJECT_ROOT / "benchmarks" / "enterprise_20d
 UPLOAD_RESPONSE_TIMEOUT_SECONDS = 180
 OPERATION_POLL_TIMEOUT_SECONDS = 300
 INGESTION_STATE_FILE = "ingestion-state.json"
+RUNNER_SCHEMA_VERSION = "s4.6b-subset-v1"
 _OPERATION_TERMINAL_STATUSES = {"succeeded", "failed", "cleanup_pending", "needs_reconciliation"}
 
 
 def _parse_modes(value: str) -> tuple[RetrievalMode, ...]:
     return (RetrievalMode.VECTOR_ONLY, RetrievalMode.GRAPH_RAG) if value == "both" else (RetrievalMode(value),)
+
+
+def _parse_selection(value: str | None, *, kind: str) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    # Preserve the caller's values for duplicate detection; selection itself
+    # is later reordered by the immutable fixture, never by CLI order.
+    values = tuple(part.strip() for part in value.split(","))
+    if not values or any(not part for part in values):
+        raise ValueError(f"{kind}_selection_empty")
+    return values
 
 
 def _safe_error(value: object) -> str:
@@ -287,6 +300,50 @@ def _fixture_fingerprint(documents: tuple[BenchmarkDocument, ...], cases: tuple[
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _selection_fingerprint(
+    *, fixture_fingerprint: str, documents: tuple[BenchmarkDocument, ...], cases: tuple[Any, ...], modes: tuple[RetrievalMode, ...],
+) -> str:
+    """Bind recovery to the exact safe selection, not CLI ordering or text."""
+    payload = {
+        "fixture_fingerprint": fixture_fingerprint,
+        "document_ids": sorted(item.document_id for item in documents),
+        "question_ids": sorted(str(item.question_id) for item in cases),
+        "modes": sorted(item.value for item in modes),
+        "scorer_version": "deterministic-v2",
+        "trace_schema_version": "s4.6a-v1",
+        "runner_schema_version": RUNNER_SCHEMA_VERSION,
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _normalised_upload_payload(raw: bytes) -> bytes:
+    """Apply the reviewed fixture-to-upload normalization exactly once."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("fixture_document_not_utf8") from exc
+    text = text.replace("\r\n", "\n")
+    if text.endswith("\n"):
+        text = text[:-1]
+    return text.encode("utf-8")
+
+
+def _document_dual_hashes(fixture: EvaluationFixture | None, documents: tuple[BenchmarkDocument, ...]) -> list[dict[str, str]]:
+    """Safe state metadata: raw fixture bytes and actual normalized upload bytes."""
+    if fixture is None:
+        return []
+    rows: list[dict[str, str]] = []
+    for document in documents:
+        raw = (fixture.root / "documents" / document.filename).read_bytes()
+        normalized = _normalised_upload_payload(raw)
+        # The JSON fixture and exact upload bytes must both satisfy the frozen
+        # body contract.  Do not silently upload a differently-normalized body.
+        if normalized != document.content.encode("utf-8"):
+            raise ValueError("fixture_upload_payload_mismatch")
+        rows.append({"fixture_document_id": document.document_id, "fixture_file_sha256": hashlib.sha256(raw).hexdigest(), "upload_payload_sha256": hashlib.sha256(normalized).hexdigest()})
+    return rows
+
+
 def _load_completed_results(output_dir: Path) -> list[dict[str, Any]]:
     """Read only the durable report rows; absent/invalid reports mean none."""
     try:
@@ -500,7 +557,13 @@ async def _cleanup_saved_run(run_id: str) -> int:
     return 0 if succeeded else 1
 
 
-async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> int:
+async def _run_real(
+    run_id: str,
+    fixture: EvaluationFixture | None = None,
+    *,
+    selection_fingerprint: str | None = None,
+    fixture_fingerprint: str | None = None,
+) -> int:
     output_dir = PROJECT_ROOT / ".runtime" / "evaluation" / run_id
     if output_dir.exists() and any(output_dir.iterdir()):
         # A run directory is evidence.  A caller must use explicit recovery
@@ -515,6 +578,7 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
         "operations": [],
         "scope_verified": False,
         "cleanup": [],
+        "selection_fingerprint": selection_fingerprint,
         # Provider identity is useful for comparing runs, while endpoint and
         # credentials remain intentionally absent from persisted evidence.
         "chat_provider": settings.chat_config.provider,
@@ -548,8 +612,18 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
             "fixture": {
                 "document_count": len(documents),
                 "case_count": len(cases or EVALUATION_CASES),
-                "fingerprint": _fixture_fingerprint(documents, cases),
+                # Bind recovery to the immutable, fully validated fixture;
+                # selection is separately bound below and must never widen it.
+                "fingerprint": fixture_fingerprint or _fixture_fingerprint(documents, cases),
+                "document_ids": [item.document_id for item in documents],
+                "question_ids": [str(item.question_id) for item in (cases or EVALUATION_CASES)],
+                "dual_hashes": _document_dual_hashes(fixture, documents),
+                "fixture_source": (
+                    str(fixture.root.relative_to(PROJECT_ROOT)).replace("\\", "/")
+                    if fixture is not None and fixture.root.is_relative_to(PROJECT_ROOT) else None
+                ),
             },
+            "selection_fingerprint": selection_fingerprint,
             "documents": [
                 _new_upload_state(run_id, document, f"s4-eval-{run_id}-{document.document_id}")
                 for document in documents
@@ -711,7 +785,13 @@ async def _run_real(run_id: str, fixture: EvaluationFixture | None = None) -> in
     return 0 if metadata["overall_pass"] else 1
 
 
-async def _recover_real_ingestion(run_id: str, fixture: EvaluationFixture | None) -> int:
+async def _recover_real_ingestion(
+    run_id: str,
+    fixture: EvaluationFixture | None,
+    *,
+    selection_fingerprint: str | None = None,
+    fixture_fingerprint: str | None = None,
+) -> int:
     """Observe pending ingestion then resume only missing evaluation pairs.
 
     This mode never replays multipart POST requests.  It requires the same
@@ -730,7 +810,9 @@ async def _recover_real_ingestion(run_id: str, fixture: EvaluationFixture | None
     )
     cases = fixture.cases if fixture else None
     expected_fixture = state.get("fixture") or {}
-    if expected_fixture.get("fingerprint") != _fixture_fingerprint(documents, cases):
+    if expected_fixture.get("fingerprint") != (fixture_fingerprint or _fixture_fingerprint(documents, cases)):
+        return 1
+    if selection_fingerprint is not None and state.get("selection_fingerprint") != selection_fingerprint:
         return 1
     changed = False
     async with httpx.AsyncClient(timeout=httpx.Timeout(UPLOAD_RESPONSE_TIMEOUT_SECONDS, connect=10)) as client:
@@ -820,22 +902,37 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cleanup-run", metavar="RUN_ID", help="explicitly clean exact IDs saved by an interrupted run")
     parser.add_argument("--rescore", metavar="RESULTS_JSON")
     parser.add_argument("--benchmark-dir", metavar="DIR", help="read a reviewed, immutable benchmark fixture from DIR")
+    parser.add_argument("--document-ids", metavar="IDS", help="comma-separated reviewed fixture document IDs")
+    parser.add_argument("--question-ids", metavar="IDS", help="comma-separated reviewed fixture question IDs")
     parser.add_argument("--s4-baseline", action="store_true", help="use the historic built-in 4-document S4 fixture")
     parser.add_argument("--run-id")
     args = parser.parse_args(argv)
     if args.rescore:
-        if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.s4_baseline or args.recover_run or args.cleanup_run:
+        if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.document_ids or args.question_ids or args.s4_baseline or args.recover_run or args.cleanup_run:
             parser.error("--rescore cannot be combined with evaluation execution options")
         return _rescore_v2(args.rescore)
     if args.recover_run and args.cleanup_run:
         parser.error("choose only one of --recover-run or --cleanup-run")
     if args.cleanup_run:
-        if not args.real or not args.authorized_s4 or args.offline or args.run_id or args.benchmark_dir or args.s4_baseline:
+        if not args.real or not args.authorized_s4 or args.offline or args.run_id or args.benchmark_dir or args.document_ids or args.question_ids or args.s4_baseline:
             parser.error("--cleanup-run requires --real --authorized-s4 and no evaluation options")
         return asyncio.run(_cleanup_saved_run(args.cleanup_run))
     if args.recover_run:
         if not args.real or not args.authorized_s4 or args.offline or args.run_id:
             parser.error("--recover-run requires --real --authorized-s4 and cannot use --run-id")
+        # Recovering a subset must not silently widen to the default fixture.
+        # Read only the prior safe state; no network or database access occurs here.
+        try:
+            saved = _load_ingestion_state(PROJECT_ROOT / ".runtime" / "evaluation" / args.recover_run)
+            saved_fixture = saved.get("fixture") if isinstance(saved.get("fixture"), dict) else {}
+            if not args.benchmark_dir and saved_fixture.get("fixture_source"):
+                args.benchmark_dir = str(saved_fixture["fixture_source"])
+            if args.document_ids is None and isinstance(saved_fixture.get("document_ids"), list):
+                args.document_ids = ",".join(str(item) for item in saved_fixture["document_ids"])
+            if args.question_ids is None and isinstance(saved_fixture.get("question_ids"), list):
+                args.question_ids = ",".join(str(item) for item in saved_fixture["question_ids"])
+        except ValueError:
+            return 1
     if not args.offline and not args.real:
         parser.error("real evaluation is refused without --real and --authorized-s4")
     if args.offline and args.real:
@@ -846,29 +943,64 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--s4-baseline cannot be combined with --benchmark-dir")
     run_id = args.run_id or f"s4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
     fixture: EvaluationFixture | None = None
+    full_fixture_fingerprint: str | None = None
     if not args.s4_baseline:
         supplied = Path(args.benchmark_dir) if args.benchmark_dir else DEFAULT_ENTERPRISE_BENCHMARK_DIR
         fixture_root = supplied if supplied.is_absolute() else PROJECT_ROOT / supplied
         try:
-            fixture = load_evaluation_fixture(fixture_root)
+            full_fixture = load_evaluation_fixture(fixture_root)
+            full_fixture_fingerprint = _fixture_fingerprint(full_fixture.documents, full_fixture.cases)
+            fixture = select_evaluation_subset(
+                full_fixture,
+                document_ids=_parse_selection(args.document_ids, kind="document"),
+                question_ids=_parse_selection(args.question_ids, kind="question"),
+            )
+            # Validate raw-file and actual-upload byte identity before any
+            # provider, HTTP, or storage operation can be created.
+            _document_dual_hashes(fixture, fixture.documents)
         except (OSError, ValueError) as exc:
             print(f"benchmark fixture validation failed safely: {_safe_error(exc)}", file=sys.stderr)
             return 1
+    modes = _parse_modes(args.mode)
+    selection_fingerprint = (
+        _selection_fingerprint(
+            fixture_fingerprint=full_fixture_fingerprint or _fixture_fingerprint(fixture.documents, fixture.cases),
+            documents=fixture.documents, cases=fixture.cases, modes=modes,
+        ) if fixture else None
+    )
     if args.offline:
         try:
             payload = run_offline_sync(
-                run_id, _parse_modes(args.mode), PROJECT_ROOT / ".runtime" / "evaluation", fixture=fixture,
+                run_id, modes, PROJECT_ROOT / ".runtime" / "evaluation", fixture=fixture,
             )
         except (ValueError, OSError) as exc:
             print(f"offline evaluation failed safely: {_safe_error(exc)}", file=sys.stderr)
             return 1
         print(f"offline fake-only evaluation completed: {PROJECT_ROOT / '.runtime' / 'evaluation' / run_id}")
+        atomic_json(PROJECT_ROOT / ".runtime" / "evaluation" / run_id / "safe-run-metadata.json", {
+            "run_id": run_id, "offline": True, "fixture_document_count": len(fixture.documents) if fixture else 4,
+            "fixture_question_count": len(fixture.cases) if fixture else len(EVALUATION_CASES),
+            "selection_fingerprint": selection_fingerprint,
+            "selected_document_ids": [item.document_id for item in fixture.documents] if fixture else [],
+            "selected_question_ids": [item.question_id for item in fixture.cases] if fixture else [],
+            "dual_hashes": _document_dual_hashes(fixture, fixture.documents) if fixture else [],
+        })
         for mode, summary in payload["summary"].items():
             print(f"{mode}: questions={summary['questions']} accuracy={summary['question_accuracy']:.3f}")
         return 0
     if args.recover_run:
-        return asyncio.run(_recover_real_ingestion(args.recover_run, fixture))
-    return asyncio.run(_run_real(run_id, fixture))
+        return asyncio.run(_recover_real_ingestion(
+            args.recover_run,
+            fixture,
+            selection_fingerprint=selection_fingerprint,
+            fixture_fingerprint=full_fixture_fingerprint,
+        ))
+    return asyncio.run(_run_real(
+        run_id,
+        fixture,
+        selection_fingerprint=selection_fingerprint,
+        fixture_fingerprint=full_fixture_fingerprint,
+    ))
 
 
 if __name__ == "__main__":

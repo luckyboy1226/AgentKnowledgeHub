@@ -65,3 +65,16 @@ only those fixture documents needed by the selected questions; use a fresh
 run ID, no history/memory, and clean only their Chroma/Neo4j provenance via
 the versioned delete saga while retaining Mongo tombstones/audit. Do not merge
 those results with the immutable enterprise baseline.
+# Subset execution
+
+The evaluation runner accepts optional `--document-ids` and `--question-ids`
+comma-separated selections. It always validates the entire reviewed fixture
+first, then preserves fixture order for the selected corpus and questions.
+Every selected question must have all declared source files in the selected
+document set; otherwise the run fails before any real upload or model call.
+
+Subset runs persist a deterministic selection fingerprint, selected IDs,
+fixture/upload dual hashes, exact uploaded UUIDs, scope, and completed pairs.
+`--recover-run` reloads that selection rather than widening to the full
+fixture. A subset run is a diagnostic artifact and must not be compared as an
+overall replacement for a complete benchmark.

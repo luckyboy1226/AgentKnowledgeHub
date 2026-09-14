@@ -252,3 +252,11 @@ trace 诊断只在相邻快照存在时归因首次丢失；缺少 extraction/no
 一律是 `insufficient_evidence`。内部未来快照查询只接收非空 UUID allowlist、参数化读取
 ready/current provenance evidence，并拒绝 legacy/全图回退。详见
 `docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。
+# Diagnostic subset runs
+
+`scripts/run-rag-eval.py` supports `--document-ids` and `--question-ids` for
+bounded diagnosis. The complete fixture is still validated first. Unknown,
+duplicate, unsafe, empty, or source-incomplete selections fail closed before
+real ingestion. The persisted selection fingerprint includes fixture identity,
+selected IDs, modes, scorer, trace schema, and runner schema. Recovery uses
+the saved selection and cleanup uses only saved uploaded UUIDs.

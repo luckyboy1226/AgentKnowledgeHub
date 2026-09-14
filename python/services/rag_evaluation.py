@@ -28,6 +28,7 @@ _ABSTENTION_MARKERS = ("无法回答", "无法确定", "信息不足", "未提�
 _ABSTENTION_MARKERS_V2 = _ABSTENTION_MARKERS + ("未提及", "未找到相关", "没有相关信息")
 _NEGATION_MARKERS_V2 = ("否", "不负责", "并非", "不是负责人", "没有负责", "并不负责", "无法得出")
 SCORER_V2 = "deterministic-v2"
+_SAFE_FIXTURE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,48 @@ class EvaluationFixture:
     documents: tuple[BenchmarkDocument, ...]
     cases: tuple[EvaluationCase, ...]
     root: Path
+
+
+def _normalise_selection_ids(value: Sequence[str] | None, *, kind: str) -> tuple[str, ...] | None:
+    """Validate an optional CLI selection without accepting paths or globs."""
+    if value is None:
+        return None
+    values = tuple(str(item).strip() for item in value)
+    if not values or any(not item or not _SAFE_FIXTURE_ID.fullmatch(item) for item in values):
+        raise _fixture_error(f"{kind} selection contains an invalid id")
+    if len(set(values)) != len(values):
+        raise _fixture_error(f"{kind} selection contains duplicate ids")
+    return values
+
+
+def select_evaluation_subset(
+    fixture: EvaluationFixture,
+    *,
+    document_ids: Sequence[str] | None = None,
+    question_ids: Sequence[str] | None = None,
+) -> EvaluationFixture:
+    """Return a fail-closed, fixture-order-preserving subset.
+
+    The full fixture has already been validated by ``load_evaluation_fixture``.
+    A selected question may not run unless every declared source is selected.
+    """
+    documents_requested = _normalise_selection_ids(document_ids, kind="document")
+    questions_requested = _normalise_selection_ids(question_ids, kind="question")
+    known_documents = {item.document_id for item in fixture.documents}
+    known_questions = {item.question_id for item in fixture.cases}
+    if documents_requested is not None and not set(documents_requested).issubset(known_documents):
+        raise _fixture_error("document selection contains an unknown id")
+    if questions_requested is not None and not set(questions_requested).issubset(known_questions):
+        raise _fixture_error("question selection contains an unknown id")
+    documents = tuple(item for item in fixture.documents if documents_requested is None or item.document_id in documents_requested)
+    cases = tuple(item for item in fixture.cases if questions_requested is None or item.question_id in questions_requested)
+    if not documents or not cases:
+        raise _fixture_error("selection must contain at least one document and question")
+    selected_sources = {item.filename for item in documents}
+    missing_sources = sorted({source for case in cases for source in case.expected_sources if source not in selected_sources})
+    if missing_sources:
+        raise _fixture_error("question selection references a source outside document selection")
+    return EvaluationFixture(fixture.name, fixture.version, documents, cases, fixture.root)
 
 
 # The 12 cases intentionally have overlapping categories (for example,
