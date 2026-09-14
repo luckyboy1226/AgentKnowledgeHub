@@ -213,6 +213,17 @@ Top-K、平均/P50/P95 耗时，以及 Chat、Embedding、Neo4j 的逻辑调用�
 `.runtime/evaluation/<run_id>/`。真实模式仍需要单独授权、实际上传得到的 UUID allowlist，且清理
 循环仅处理本轮实际创建的 document IDs；该命令不会把 fixture 内容或结果加入 Git。
 
+### S4.5 离线诊断
+
+真实 run 完成后可使用以下**无模型、无数据库**命令生成派生故障分类：
+
+```powershell
+python scripts/analyze-rag-eval.py --strict --results .runtime/evaluation/<run_id>/results.json --benchmark-dir benchmarks/enterprise_20docs_60q_expanded --output-dir .runtime/evaluation/<run_id>-diagnosis-v1
+```
+
+它不会改写原始 JSON、CSV、Markdown 或 fixture。报告仅判断进入最终 prompt 的 graph evidence、来源和
+确定性评分；没有中间抽取/写入快照时，不会把缺失 edge 武断归因于图谱抽取或存储。
+
 ### 中断恢复与显式清理
 
 真实运行先以原子方式写入 `ingestion-state.json`，其中仅保存 run ID、fixture 指纹、内容哈希、

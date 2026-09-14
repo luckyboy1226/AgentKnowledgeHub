@@ -178,3 +178,18 @@ records 被 fail-closed 拒绝。评测专用 rerank 不再为 graph context 固
 
 验收不要求 GraphRAG 必须胜出。要求是：关系混淆减少、来源准确、scope 隔离仍 fail-closed、
 vector-only 仍零图谱调用、评分规则可解释。第二轮若仍落后，必须如实保留该结果。
+
+## S4.5：不可变结果的离线故障分类
+
+`scripts/analyze-rag-eval.py` 只读取既有 `results.json` 与固定 fixture，并把派生诊断写入新的
+`.runtime/evaluation/<run_id>-diagnosis-v1/` 目录。它先后校验原始结果、CSV、Markdown、运行元数据和
+fixture JSON 的 SHA-256；原始输入在分析期间发生变化会 fail closed。派生报告不保存回答正文，仅保存
+答案哈希、安全 source 名和最终进入 prompt 的结构化 graph evidence。
+
+关系指标的适用范围是 **GraphRAG 且 fixture 定义了 `expected_relation_path`** 的结果。无关系题和
+Vector RAG 的关系指标均为 N/A，绝不当作 0 分。诊断独立统计 exact edge recall、canonical predicate
+匹配、方向准确率、端点匹配和多跳完整路径；`PROVIDES_INDEX` 与 `DEPENDS_ON` 永不视为同义。
+
+该分析只能诊断最终 prompt evidence 与回答之间的关系。若目标 edge 未进入 prompt，而 run 没有抽取、
+Neo4j 写入或全量检索快照，只能报告“进入 prompt 前缺失 / 证据不足”，不能推断为抽取、持久化或检索中
+的任一具体层失败。Graph participation 也不等于相关 graph evidence 或回答质量。
