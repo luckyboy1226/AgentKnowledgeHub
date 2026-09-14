@@ -8,6 +8,7 @@ existing parser/extractor prompts and provider lifecycle remain authoritative.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -140,6 +141,7 @@ class DocumentProcessorAdapter:
         content_hash: str,
         operation_id: str,
         doc_type: DocType | None = None,
+        graph_trace: Any | None = None,
     ) -> PreparedDocument:
         """Prepare a validated in-memory artifact; no storage writes or retries occur."""
         source = safe_filename(filename)
@@ -185,8 +187,15 @@ class DocumentProcessorAdapter:
                 _copy_safe_failure_metadata(extraction_error, failure)
                 raise extraction_error from exc
             extract_elapsed_ms = round((time.monotonic() - extract_started) * 1000, 3)
+            self._record_relation_trace(
+                graph_trace, "extracted", extraction, document_id=document_id, version=version,
+                source=source, status="processing", is_current=False,
+            )
             try:
-                entities, relations, dropped_relation_count = self._normalize_extraction(extraction)
+                entities, relations, dropped_relation_count = self._normalize_extraction(
+                    extraction, graph_trace=graph_trace, document_id=document_id,
+                    version=version, source=source,
+                )
             except Exception as exc:
                 self._audit(
                     operation_id, "normalize", success=False,
@@ -307,7 +316,8 @@ class DocumentProcessorAdapter:
         return normalized
 
     def _normalize_extraction(
-        self, results: list[ExtractionResult]
+        self, results: list[ExtractionResult], *, graph_trace: Any | None = None,
+        document_id: str = "", version: int = 1, source: str = "",
     ) -> tuple[list[Entity], list[Relation], int]:
         entities_by_key: dict[tuple[str, str], Entity] = {}
         raw_relations: list[Relation] = []
@@ -338,11 +348,18 @@ class DocumentProcessorAdapter:
         for relation in raw_relations:
             head, tail = str(relation.head or "").strip(), str(relation.tail or "").strip()
             if not head or not tail:
+                if graph_trace is not None:
+                    graph_trace.reject("invalid_relation", stage="extracted")
                 raise InvalidExtractionResult("Relation endpoint is incomplete")
             if head not in entity_names or tail not in entity_names:
                 # Never synthesize a graph node from an unsupported provider
                 # reference. Keep validated evidence and report only the count.
                 dropped_relation_count += 1
+                if graph_trace is not None:
+                    graph_trace.reject(
+                        "dangling_subject" if head not in entity_names else "dangling_object",
+                        stage="normalized",
+                    )
                 continue
             # Keep raw extraction evidence while mapping only reviewed aliases
             # to a canonical relationship.  Unknown labels are intentionally
@@ -371,7 +388,46 @@ class DocumentProcessorAdapter:
                 )
         entities = [entities_by_key[key] for key in sorted(entities_by_key)]
         relations = [relations_by_key[key] for key in sorted(relations_by_key)]
+        self._record_relation_trace(
+            graph_trace, "normalized", relations, document_id=document_id, version=version,
+            source=source, status="processing", is_current=False,
+        )
         return entities, relations, dropped_relation_count
+
+    @staticmethod
+    def _record_relation_trace(
+        trace: Any | None, stage: str, results: list[Any], *, document_id: str,
+        version: int, source: str, status: str, is_current: bool,
+    ) -> None:
+        """Optional internal observer; it neither logs nor changes extraction."""
+        if trace is None:
+            return
+        from services.relation_semantics import canonicalize_relation
+
+        edges: list[dict[str, Any]] = []
+        for item in results or []:
+            relations = getattr(item, "relations", None)
+            candidates = relations if isinstance(relations, list) else [item]
+            for relation in candidates:
+                head = str(getattr(relation, "head", "") or "").strip()
+                tail = str(getattr(relation, "tail", "") or "").strip()
+                if not head or not tail:
+                    continue
+                properties = getattr(relation, "properties", {}) or {}
+                semantic = canonicalize_relation(
+                    getattr(relation, "relation", ""),
+                    raw_predicate=properties.get("raw_predicate", getattr(relation, "relation", "")),
+                )
+                evidence_material = "\x1f".join((str(document_id), str(int(version)), head, semantic.predicate, tail))
+                edges.append({
+                    "subject": head, "predicate": semantic.predicate, "raw_predicate": semantic.raw_predicate,
+                    "object": tail, "direction": "forward", "document_id": document_id,
+                    "document_version": int(version), "source": source, "status": status,
+                    "is_current": is_current,
+                    "evidence_key": hashlib.sha256(evidence_material.encode("utf-8")).hexdigest(),
+                    "relation_semantics_version": semantic.semantics_version,
+                })
+        trace.record_edges(stage, edges)
 
     def _audit(self, operation_id: str, phase: str, **fields: Any) -> None:
         event = {"operation_id": operation_id, "phase": phase, **fields}

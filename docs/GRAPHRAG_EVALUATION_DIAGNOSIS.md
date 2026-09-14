@@ -193,3 +193,14 @@ Vector RAG 的关系指标均为 N/A，绝不当作 0 分。诊断独立统计 e
 该分析只能诊断最终 prompt evidence 与回答之间的关系。若目标 edge 未进入 prompt，而 run 没有抽取、
 Neo4j 写入或全量检索快照，只能报告“进入 prompt 前缺失 / 证据不足”，不能推断为抽取、持久化或检索中
 的任一具体层失败。Graph participation 也不等于相关 graph evidence 或回答质量。
+
+## S4.6a：未来 run 的首次丢失证据
+
+S4.5 的不可变 baseline 不会被补写 trace。未来评测才会按 question 保存安全的 graph evidence
+stage snapshots，从 extraction、normalization、persistence、raw retrieval、scope、relevance、rank
+到最终 prompt。诊断器只在前后 stage 已被实际记录时输出具体首次丢失点；跳过或未采集的 stage
+严格归为 `insufficient_evidence`。这避免把历史 Q03/Q05 等关系错误错误地归咎于抽取或 Neo4j。
+
+关系 edge 的 subject、canonical predicate、object 和 direction 分别比较，多跳路径逐 edge
+判断完整性。scope 过滤必须有同一 edge fingerprint 的拒绝记录才可归因，不能仅依据缺少 accepted
+snapshot。详见 `docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。

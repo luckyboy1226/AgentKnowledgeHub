@@ -17,6 +17,8 @@ from uuid import NAMESPACE_URL, uuid5
 
 from agents.qa_agent import EvaluationQueryPlan, QAAgent, RetrievalMode
 from services.evaluation_scope import EvaluationScope, require_verified_scope
+from services.graph_evidence_trace import GraphEvidenceTrace
+from services.graph_trace_diagnosis import diagnose_first_loss
 from services.relation_semantics import RELATION_SEMANTICS_VERSION, canonical_predicate, is_canonical_predicate
 
 
@@ -607,6 +609,7 @@ class RAGEvaluationRunner:
         self.cases = tuple(cases)
         self.scope = require_verified_scope(scope)
         self.offline = offline
+        self._graph_traces: dict[str, dict[str, Any]] = {}
 
     async def run(
         self,
@@ -679,6 +682,7 @@ class RAGEvaluationRunner:
             results.extend(case_rows)
             payload["summary"] = self._summarize(results)
             self.write_reports(output_dir, payload)
+            self.write_graph_trace_reports(output_dir)
         return payload
 
     async def _run_case(
@@ -693,9 +697,20 @@ class RAGEvaluationRunner:
         vector_before = _counter_value(self.agent.vector_store, "search_calls")
         embedding_before = _counter_value(getattr(self.agent.vector_store, "embeddings", None), "query_calls")
         graph_before = _counter_value(self.agent.knowledge_graph, "calls")
+        trace = (
+            GraphEvidenceTrace(
+                run_id=plan.run_id,
+                question_id=case.question_id,
+                scope_verified=self.scope.is_verified(),
+                allowed_document_ids_count=len(self.scope.allowed_document_ids),
+            )
+            if mode is RetrievalMode.GRAPH_RAG else None
+        )
         started = time.monotonic()
         try:
-            result = await self.agent.answer_with_evaluation_plan(plan, mode, scope=self.scope)
+            result = await self.agent.answer_with_evaluation_plan(
+                plan, mode, scope=self.scope, graph_trace=trace
+            )
             elapsed_ms = round((time.monotonic() - started) * 1000, 3)
             sources = self._safe_sources(result.contexts)
             vector_count = sum(context.retrieval_type == "vector" for context in result.contexts)
@@ -708,7 +723,7 @@ class RAGEvaluationRunner:
             )
             relation_fidelity = score_relation_fidelity(case, result.contexts)
             evidence_diagnostics = graph_evidence_diagnostics(case, result.contexts)
-            return {
+            row = {
                 "run_id": plan.run_id,
                 "mode": mode.value,
                 "question_id": case.question_id,
@@ -734,8 +749,11 @@ class RAGEvaluationRunner:
                 "forbidden_fact_violation": bool(score["forbidden_keyword_hits"]),
                 "failure_summary": None,
             }
+            if trace is not None:
+                self._graph_traces[case.question_id] = trace.to_dict()
+            return row
         except Exception as exc:
-            return {
+            row = {
                 "run_id": plan.run_id, "mode": mode.value, "question_id": case.question_id,
                 "category": case.category, "success": False, "http_status": None,
                 "latency_ms": round((time.monotonic() - started) * 1000, 3), "answer": "",
@@ -751,6 +769,75 @@ class RAGEvaluationRunner:
                 "relation_conflicts": [], "relation_semantics_version": RELATION_SEMANTICS_VERSION,
                 "failure_summary": type(exc).__name__,
             }
+            if trace is not None:
+                self._graph_traces[case.question_id] = trace.to_dict()
+            return row
+
+    def write_graph_trace_reports(self, output_dir: Path) -> None:
+        """Persist future-only safe traces separately from benchmark results."""
+        if not self._graph_traces:
+            return
+        existing_path = output_dir / "graph-trace.json"
+        existing_traces: dict[str, dict[str, Any]] = {}
+        if existing_path.exists():
+            try:
+                previous = json.loads(existing_path.read_text(encoding="utf-8"))
+                for trace in previous.get("traces", []):
+                    if isinstance(trace, dict) and trace.get("question_id"):
+                        existing_traces[str(trace["question_id"])] = trace
+            except (OSError, json.JSONDecodeError, TypeError):
+                # A corrupt existing trace is never silently overwritten on
+                # recovery; preserve it and let the caller surface the error.
+                raise RuntimeError("Existing graph trace report is not readable")
+        existing_traces.update(self._graph_traces)
+        payload = {
+            "notice": "fake-only trace verification; not real GraphRAG quality evidence"
+            if self.offline else "Authorized evaluation graph evidence trace; contains no document text or prompts.",
+            "traces": [existing_traces[key] for key in sorted(existing_traces)],
+        }
+        atomic_json(existing_path, payload)
+        stage_counts: dict[str, int] = {}
+        rejection_counts: dict[str, int] = {}
+        for trace in payload["traces"]:
+            for stage, edges in trace.get("stages", {}).items():
+                stage_counts[stage] = stage_counts.get(stage, 0) + len(edges)
+            for rejection in trace.get("rejections", []):
+                reason = str(rejection.get("reason", "unknown"))
+                rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+        summary = {
+            "run_id": self.scope.run_id,
+            "trace_questions": len(payload["traces"]),
+            "stage_edge_counts": dict(sorted(stage_counts.items())),
+            "rejection_counts": dict(sorted(rejection_counts.items())),
+        }
+        atomic_json(output_dir / "graph-stage-counts.json", summary)
+        first_loss_rows: list[dict[str, Any]] = []
+        cases = {case.question_id: case for case in self.cases}
+        for trace in payload["traces"]:
+            case = cases.get(str(trace.get("question_id")))
+            if case is None:
+                continue
+            diagnosis = diagnose_first_loss(case.expected_relation_path, trace)
+            for edge in diagnosis["edge_diagnoses"]:
+                first_loss_rows.append({
+                    "question_id": case.question_id,
+                    **edge["expected"],
+                    "first_loss": edge["first_loss"],
+                    "matched_stages": ";".join(edge["matched_stages"]),
+                })
+        temporary_csv = output_dir / "graph-first-loss.csv.tmp"
+        with temporary_csv.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=(
+                "question_id", "subject", "predicate", "object", "direction", "first_loss", "matched_stages",
+            ))
+            writer.writeheader()
+            writer.writerows(first_loss_rows)
+        os.replace(temporary_csv, output_dir / "graph-first-loss.csv")
+        lines = ["# Graph evidence trace", "", payload["notice"], "", f"Trace questions: {summary['trace_questions']}", ""]
+        lines.extend(f"- {stage}: {count}" for stage, count in summary["stage_edge_counts"].items())
+        temporary = output_dir / "graph-trace-summary.md.tmp"
+        temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.replace(temporary, output_dir / "graph-trace-summary.md")
 
     def _call_counts(
         self, plan_before: int | None, plan_after: int | None, chat_before: int | None,
@@ -977,6 +1064,7 @@ class OfflineKnowledgeGraph:
                     "direction": direction, "document_id": document_id,
                     "document_version": 1, "source": source,
                     "evidence_key": f"offline-{document_id[:8]}-{case.question_id}-{index}",
+                    "status": "ready", "is_current": True,
                 }
                 self.evidence_by_entity.setdefault(subject, []).append(edge)
                 self.evidence_by_entity.setdefault(target, []).append(edge)
@@ -993,6 +1081,7 @@ class OfflineKnowledgeGraph:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         scope_diagnostics: dict[str, int] | None = None,
+        graph_trace: Any | None = None,
     ) -> list[dict[str, Any]]:
         del hops, allowed_document_ids, scope_diagnostics
         self.calls += 1
@@ -1001,7 +1090,7 @@ class OfflineKnowledgeGraph:
         if not source and not edges:
             return []
         if edges:
-            return [{
+            records = [{
                 "source": edge["subject"], "relations": [edge["predicate"]], "target": edge["object"],
                 "target_type": "Concept", "target_desc": "offline fixture evidence",
                 "evidence_edges": [edge],
@@ -1012,19 +1101,25 @@ class OfflineKnowledgeGraph:
                     "subject": entity_name, "predicate": "RELATED_TO", "object": "foreign",
                     "direction": "forward", "document_id": str(uuid5(NAMESPACE_URL, "foreign-graph")),
                     "document_version": 1, "source": "foreign.txt", "evidence_key": "foreign-evidence",
+                    "status": "ready", "is_current": True,
                 }],
             }, {
                 "source": entity_name, "relations": ["RELATED_TO"], "target": "legacy",
                 "target_type": "Concept", "target_desc": "legacy evidence", "evidence_edges": [],
             }]
+            if graph_trace is not None:
+                for record in records:
+                    graph_trace.record_record("retrieved_raw", record)
+            return records
         document_id = offline_document_id(source)
-        return [{
+        records = [{
             "source": entity_name, "relations": ["RELATED_TO"], "target": "synthetic",
             "target_type": "Concept", "target_desc": "offline evidence",
             "evidence_edges": [{
                 "subject": entity_name, "predicate": "RELATED_TO", "object": "synthetic",
                 "direction": "forward", "document_id": document_id, "document_version": 1,
                 "source": source, "evidence_key": f"offline-{document_id[:8]}-{entity_name}",
+                "status": "ready", "is_current": True,
             }],
         }, {
             "source": entity_name, "relations": ["RELATED_TO"], "target": "foreign",
@@ -1033,11 +1128,16 @@ class OfflineKnowledgeGraph:
                 "subject": entity_name, "predicate": "RELATED_TO", "object": "foreign",
                 "direction": "forward", "document_id": str(uuid5(NAMESPACE_URL, "foreign-graph")),
                 "document_version": 1, "source": "foreign.txt", "evidence_key": "foreign-evidence",
+                "status": "ready", "is_current": True,
             }],
         }, {
             "source": entity_name, "relations": ["RELATED_TO"], "target": "legacy",
             "target_type": "Concept", "target_desc": "legacy evidence", "evidence_edges": [],
         }]
+        if graph_trace is not None:
+            for record in records:
+                graph_trace.record_record("retrieved_raw", record)
+        return records
 
 
 def build_offline_runner(

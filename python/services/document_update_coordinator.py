@@ -250,6 +250,7 @@ class DocumentUpdateCoordinator:
         logical_key: str | None = None,
         namespace: str = "default",
         operation_id: str | None = None,
+        graph_trace: Any | None = None,
     ) -> dict[str, Any]:
         content_hash = self._content_hash(content)
         normalized_namespace = safe_key(namespace)
@@ -282,6 +283,7 @@ class DocumentUpdateCoordinator:
             operation_id=operation_id,
             namespace=normalized_namespace,
             logical_key=normalized_logical_key,
+            graph_trace=graph_trace,
         )
 
     async def update_document(
@@ -291,6 +293,7 @@ class DocumentUpdateCoordinator:
         filename: str,
         content: bytes,
         operation_id: str | None = None,
+        graph_trace: Any | None = None,
     ) -> dict[str, Any]:
         content_hash = self._content_hash(content)
         if operation_id:
@@ -325,6 +328,7 @@ class DocumentUpdateCoordinator:
                 operation_id=operation_id,
                 namespace=document.get("namespace"),
                 logical_key=document.get("logical_key"),
+                graph_trace=graph_trace,
             )
         except Exception:
             # _run_reserved_version owns a reserved version and records its
@@ -373,6 +377,7 @@ class DocumentUpdateCoordinator:
         operation_id: str | None,
         namespace: str | None = None,
         logical_key: str | None = None,
+        graph_trace: Any | None = None,
     ) -> dict[str, Any]:
         document_id = document["document_id"]
         version = int(version_record["version"])
@@ -399,7 +404,7 @@ class DocumentUpdateCoordinator:
             return {**operation, "changed": True}
 
         try:
-            prepared = await self.processor.prepare(
+            prepare_kwargs: dict[str, Any] = dict(
                 content=content,
                 filename=filename,
                 document_id=document_id,
@@ -407,6 +412,9 @@ class DocumentUpdateCoordinator:
                 content_hash=version_record["content_hash"],
                 operation_id=operation_id,
             )
+            if graph_trace is not None:
+                prepare_kwargs["graph_trace"] = graph_trace
+            prepared = await self.processor.prepare(**prepare_kwargs)
             self.journal.complete_step(
                 operation_id,
                 "prepared",
@@ -425,6 +433,9 @@ class DocumentUpdateCoordinator:
                 raise RuntimeError("Vector stage count does not match prepared chunks")
             self.journal.complete_step(operation_id, "vector_staged", vector_ids=vector_ids)
 
+            graph_stage_kwargs: dict[str, Any] = {}
+            if graph_trace is not None:
+                graph_stage_kwargs["graph_trace"] = graph_trace
             await self.knowledge_graph.stage_document_version(
                 document_id,
                 version,
@@ -432,6 +443,7 @@ class DocumentUpdateCoordinator:
                 filename,
                 prepared.entities,
                 prepared.relations,
+                **graph_stage_kwargs,
             )
             evidence = await self.knowledge_graph.list_document_evidence(document_id, version)
             if len(evidence) != len(prepared.relations):

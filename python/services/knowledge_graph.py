@@ -6,6 +6,7 @@ import hashlib
 import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+from uuid import UUID
 
 from agents.knowledge_extract_agent import Entity, Relation
 from config import settings
@@ -155,9 +156,10 @@ class KnowledgeGraphService:
         source: str | Path,
         entities: list[Entity],
         relations: list[Relation],
+        graph_trace: Any | None = None,
     ) -> dict[str, int]:
         """Atomically stage one processing version with entity mentions and evidence."""
-        return await self._execute_write(
+        result = await self._execute_write(
             self._stage_document_version_tx,
             str(document_id),
             int(version),
@@ -166,6 +168,25 @@ class KnowledgeGraphService:
             entities,
             relations,
         )
+        if graph_trace is not None:
+            safe_source = self.safe_source(source)
+            edges: list[dict[str, Any]] = []
+            for relation in relations:
+                semantic = canonicalize_relation(
+                    relation.relation,
+                    raw_predicate=(relation.properties or {}).get("raw_predicate", relation.relation),
+                )
+                edges.append({
+                    "subject": relation.head, "predicate": semantic.predicate,
+                    "raw_predicate": semantic.raw_predicate, "object": relation.tail,
+                    "direction": "forward", "document_id": str(document_id),
+                    "document_version": int(version), "source": safe_source,
+                    "status": "processing", "is_current": False,
+                    "evidence_key": self.evidence_key(document_id, version, relation.head, semantic.predicate, relation.tail),
+                    "relation_semantics_version": semantic.semantics_version,
+                })
+            graph_trace.record_edges("persisted", edges)
+        return result
 
     async def _stage_document_version_tx(
         self,
@@ -473,6 +494,8 @@ class KnowledgeGraphService:
             version = edge.get("document_version")
             if not isinstance(version, int) or isinstance(version, bool) or version < 1:
                 return False
+            if edge.get("status") != "ready" or edge.get("is_current") is not True:
+                return False
         return True
 
     async def get_neighbors(
@@ -482,6 +505,7 @@ class KnowledgeGraphService:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         scope_diagnostics: dict[str, int] | None = None,
+        graph_trace: Any | None = None,
     ) -> list[dict]:
         """Retrieve current/legacy facts, or only exact provenance for scoped evaluation."""
         safe_hops = min(max(int(hops), 1), 5)
@@ -536,7 +560,9 @@ class KnowledgeGraphService:
                     document_id: rels[index].document_id,
                     document_version: rels[index].document_version,
                     source: rels[index].source,
-                    evidence_key: rels[index].evidence_key
+                    evidence_key: rels[index].evidence_key,
+                    status: rels[index].status,
+                    is_current: rels[index].is_current
                   }}
                   ELSE {{
                     subject: path_nodes[index + 1].name,
@@ -548,7 +574,9 @@ class KnowledgeGraphService:
                     document_id: rels[index].document_id,
                     document_version: rels[index].document_version,
                     source: rels[index].source,
-                    evidence_key: rels[index].evidence_key
+                    evidence_key: rels[index].evidence_key,
+                    status: rels[index].status,
+                    is_current: rels[index].is_current
                   }}
                 END
               ] AS evidence_edges
@@ -559,7 +587,15 @@ class KnowledgeGraphService:
             return records
         scoped_records: list[dict] = []
         for record in records:
+            if graph_trace is not None:
+                graph_trace.record_record("retrieved_raw", record)
             if not self._in_evaluation_scope(record, allowed_document_ids):
+                if graph_trace is not None:
+                    edges = graph_trace.edges_from_record(record)
+                    if edges:
+                        graph_trace.reject("malformed_record", edge=edges[0], stage="scope_rejected")
+                    else:
+                        graph_trace.reject("missing_provenance", stage="scope_rejected")
                 if scope_diagnostics is not None:
                     scope_diagnostics["graph_scope_rejected_count"] = (
                         scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
@@ -567,6 +603,54 @@ class KnowledgeGraphService:
                 continue
             scoped_records.append(record)
         return scoped_records
+
+    @staticmethod
+    def _validated_scope_ids(allowed_document_ids: frozenset[str]) -> list[str]:
+        """Reject malformed or empty evaluation scopes before any graph query."""
+        if not allowed_document_ids:
+            raise ValueError("Evaluation graph scope must not be empty")
+        validated: list[str] = []
+        for value in allowed_document_ids:
+            try:
+                validated.append(str(UUID(str(value))))
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise ValueError("Evaluation graph scope contains an invalid document id") from exc
+        return sorted(set(validated))
+
+    async def list_scoped_evaluation_evidence(
+        self, allowed_document_ids: frozenset[str], *, require_ready_current: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Internal future-evaluation snapshot; never used by public QA.
+
+        It is deliberately read-only and requires UUID allowlist provenance.
+        Legacy graph facts cannot match the query and no full-graph fallback is
+        available.  S4.6a tests use a fake ``execute_cypher`` implementation.
+        """
+        ids = self._validated_scope_ids(allowed_document_ids)
+        status_filter = "rel.is_current = true AND rel.status = 'ready'" if require_ready_current else "rel.status IN ['processing', 'ready', 'failed', 'deleted']"
+        cypher = f"""
+        MATCH (dv:DocumentVersion)-[:MENTIONS]->(a:Entity)-[rel]->(b:Entity)
+        WHERE type(rel) <> 'MENTIONS'
+          AND rel.document_id IN $allowed_document_ids
+          AND dv.document_id = rel.document_id
+          AND dv.document_version = rel.document_version
+          AND dv.is_current = true AND dv.status = 'ready'
+          AND {status_filter}
+        RETURN a.name AS subject,
+          coalesce(rel.predicate, type(rel)) AS predicate,
+          coalesce(rel.raw_predicate, rel.predicate, type(rel)) AS raw_predicate,
+          b.name AS object,
+          'forward' AS direction,
+          rel.document_id AS document_id,
+          rel.document_version AS document_version,
+          rel.source AS source,
+          rel.evidence_key AS evidence_key,
+          rel.relation_semantics_version AS relation_semantics_version,
+          rel.status AS status,
+          rel.is_current AS is_current
+        ORDER BY rel.document_id, rel.document_version, rel.evidence_key
+        """
+        return await self.execute_cypher(cypher, {"allowed_document_ids": ids})
 
     async def get_current_paths(self, name_a: str, name_b: str, limit: int = 3) -> list[dict]:
         relationship_filter = self._current_or_legacy_relationship_filter("rel")

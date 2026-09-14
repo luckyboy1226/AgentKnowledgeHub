@@ -240,3 +240,15 @@ Vector RAG 与 GraphRAG 之间，该题的临时半对结果会被舍弃并整�
 `--cleanup-run <run_id>`。后者只读取该状态文件中的非空 UUID，并要求它与持久 allowlist 精确一致；不做
 全库清理、不接受任意 document ID，也不调用全局 reconcile。MongoDB tombstone、版本与 operation audit
 按版本化写入语义保留。
+
+### S4.6a：逐阶段图谱 evidence trace
+
+后续 scoped `graph_rag` 评测可显式携带一个仅内存的逐题 trace。它记录安全的 edge 指纹、
+有向三元组、provenance、scope 接受/拒绝、相关性分数、排序、最终 Top-K 与实际进入 prompt 的
+阶段；普通 `/api/qa/ask` 不创建 trace，`vector_only` 仍为零图调用。trace 输出与 `results.json`
+分离，原子写入同一 `.runtime/evaluation/<run_id>/` 目录，且没有正文、prompt、密钥或绝对路径。
+
+trace 诊断只在相邻快照存在时归因首次丢失；缺少 extraction/normalization/persistence snapshot
+一律是 `insufficient_evidence`。内部未来快照查询只接收非空 UUID allowlist、参数化读取
+ready/current provenance evidence，并拒绝 legacy/全图回退。详见
+`docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。

@@ -55,6 +55,7 @@ def _scoped_graph_record(document_id, *, version=1, source="allowed.txt", eviden
             "subject": "Alice", "predicate": "OWNS", "object": "Project",
             "direction": "forward", "document_id": str(document_id),
             "document_version": version, "source": source, "evidence_key": evidence_key,
+            "status": "ready", "is_current": True,
         }],
     }
 
@@ -169,6 +170,21 @@ async def test_neo4j_scope_filters_foreign_and_legacy_records(document_ids):
     assert parameters["allowed_document_ids"] == [allowed]
     assert "rel.document_id IS NULL" not in query
     assert "evidence_edges" in query and "evidence_key" in query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", [
+    {"status": "processing", "is_current": False},
+    {"status": "failed", "is_current": False},
+    {"status": "ready", "is_current": False},
+])
+async def test_neo4j_scope_rejects_inactive_or_not_ready_evidence(document_ids, mutation):
+    allowed, _foreign = document_ids
+    record = _scoped_graph_record(allowed)
+    record["evidence_edges"][0].update(mutation)
+    graph = KnowledgeGraphService()
+    graph._driver = FakeDriver([record])
+    assert await graph.get_neighbors("Alice", allowed_document_ids=frozenset({allowed})) == []
 
 
 @pytest.mark.asyncio

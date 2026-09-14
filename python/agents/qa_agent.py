@@ -257,6 +257,7 @@ class QAAgent:
         mode: RetrievalMode | str,
         *,
         scope: EvaluationScope | None = None,
+        graph_trace: Any | None = None,
     ) -> QAResult:
         """Evaluate a plan without memory or checkpoint state.
 
@@ -287,12 +288,27 @@ class QAAgent:
                 {"entities": list(plan.entities)},
                 allowed_document_ids=verified_scope.allowed_document_ids,
                 scope_diagnostics=diagnostics,
+                graph_trace=graph_trace,
             )
         # Scoped evaluation must not give every graph record an unconditional
         # score boost: provenance-complete evidence competes on its own score.
-        top_contexts = self._hybrid_rerank(
+        ranked_contexts = self._hybrid_rerank(
             vector_contexts + graph_contexts, evaluation_scoped=True
-        )[:8]
+        )
+        top_contexts = ranked_contexts[:8]
+        if graph_trace is not None:
+            for position, context in enumerate(ranked_contexts, start=1):
+                if context.retrieval_type == "graph":
+                    graph_trace.rank(context.metadata.get("graph_evidence", []), position)
+            for context in top_contexts:
+                if context.retrieval_type != "graph":
+                    continue
+                evidence = context.metadata.get("graph_evidence", [])
+                graph_trace.record_edges("entered_final_top_k", evidence)
+                # The exact same contexts are sent to _generate_answer below.
+                graph_trace.record_edges("entered_prompt", evidence)
+            if graph_contexts and not any(context.retrieval_type == "graph" for context in top_contexts):
+                graph_trace.reject("top_k_truncated", stage="entered_final_top_k", detail="no_graph_context_in_top_k")
         answer_text, reasoning = await self._generate_answer(
             plan.question, top_contexts, plan.intent
         )
@@ -430,6 +446,7 @@ class QAAgent:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         scope_diagnostics: dict[str, int] | None = None,
+        graph_trace: Any | None = None,
     ) -> list[RetrievedContext]:
         """Retrieve graph facts through the provenance-aware service API.
 
@@ -452,16 +469,23 @@ class QAAgent:
                         hops=2,
                         allowed_document_ids=allowed_document_ids,
                         scope_diagnostics=scope_diagnostics,
+                        graph_trace=graph_trace,
                     )
                 for record in records:
                     if allowed_document_ids is not None:
                         evidence = self._scoped_graph_evidence(record, allowed_document_ids)
                         if evidence is None:
+                            if graph_trace is not None:
+                                graph_trace.record_record("retrieved_raw", record)
+                                graph_trace.reject("malformed_record", stage="scope_rejected")
                             if scope_diagnostics is not None:
                                 scope_diagnostics["graph_scope_rejected_count"] = (
                                     scope_diagnostics.get("graph_scope_rejected_count", 0) + 1
                                 )
                             continue
+                        if graph_trace is not None:
+                            graph_trace.record_edges("scope_accepted", evidence)
+                            graph_trace.score(evidence, 0.8)
                         source = self.knowledge_graph.safe_source(evidence[0]["source"])
                         content = self._format_scoped_graph_evidence(evidence)
                         metadata = {
@@ -488,7 +512,9 @@ class QAAgent:
                         retrieval_type="graph",
                         metadata=metadata,
                     ))
-            except Exception:
+            except Exception as exc:
+                if graph_trace is not None:
+                    graph_trace.reject("entity_query_miss", stage="retrieved_raw", detail=type(exc).__name__)
                 continue
         return contexts
 
@@ -519,12 +545,16 @@ class QAAgent:
             version = raw.get("document_version")
             if not isinstance(version, int) or isinstance(version, bool) or version < 1:
                 return None
+            if raw.get("status") != "ready" or raw.get("is_current") is not True:
+                return None
             raw_predicate = semantic.raw_predicate
             semantics_version = " ".join(str(raw.get("relation_semantics_version", "")).split())
             normalized.append({
                 **values,
                 "document_version": version,
                 "raw_predicate": raw_predicate[:160] or values["predicate"],
+                "status": "ready",
+                "is_current": True,
                 "relation_semantics_version": semantics_version or "legacy-unversioned",
             })
         return normalized
