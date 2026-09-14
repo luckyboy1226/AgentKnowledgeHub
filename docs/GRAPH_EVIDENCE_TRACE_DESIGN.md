@@ -78,3 +78,32 @@ fixture/upload dual hashes, exact uploaded UUIDs, scope, and completed pairs.
 `--recover-run` reloads that selection rather than widening to the full
 fixture. A subset run is a diagnostic artifact and must not be compared as an
 overall replacement for a complete benchmark.
+
+## S4.7a: immutable first-loss attribution
+
+`scripts/analyze-graph-trace.py` is an offline-only companion for an existing
+trace directory. It hashes `results.json`, `graph-trace.json`,
+`safe-run-metadata.json`, and `ingestion-state.json` before and after analysis,
+then writes a new derived directory only. It validates the run ID, selected
+fixture IDs, selection fingerprint, graph trace question coverage, and the
+expected vector/graph result pairs before output.
+
+For every expected relation edge, the derived report records independent
+subject/object endpoint, canonical-predicate, direction, provenance and exact
+edge match counts at `extracted → normalized → persisted → retrieved_raw →
+scope_accepted → relevance_scored → ranked → entered_final_top_k →
+entered_prompt`.
+
+An absent stage snapshot is **not** an empty snapshot. A concrete first-loss
+label is emitted only when two adjacent snapshots are present and prove a
+transition. In particular, `retrieved_raw = 0` cannot be attributed to
+extraction or persistence. Scope rejection additionally requires the matching
+retrieved edge fingerprint in a recorded rejection. Negative predicates such
+as `NOT_DEPENDS_ON` require explicit evidence; absence of `DEPENDS_ON` never
+creates a negative edge.
+
+The S4.6b persisted trace starts at `retrieved_raw`, so it cannot determine
+whether Q01 `HAS_ROLE`, Q24 `MONITORS`, or Q41 `NOT_DEPENDS_ON` was first lost
+in extraction, normalization, or persistence. The S4.7a report therefore
+labels those cases `insufficient_evidence`; this is an evidence boundary, not
+a claim that the expected relationship does not exist.

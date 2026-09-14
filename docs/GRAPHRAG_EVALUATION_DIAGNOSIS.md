@@ -204,3 +204,20 @@ stage snapshots，从 extraction、normalization、persistence、raw retrieval�
 关系 edge 的 subject、canonical predicate、object 和 direction 分别比较，多跳路径逐 edge
 判断完整性。scope 过滤必须有同一 edge fingerprint 的拒绝记录才可归因，不能仅依据缺少 accepted
 snapshot。详见 `docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。
+
+## S4.7a：S4.6b 真实 trace 的离线归因边界
+
+对不可变 run `s4-trace-20260914T131551Z` 的派生分析只读取已保存的 trace，并另写入
+`s4-trace-20260914T131551Z-first-loss-v1`。该 trace 为全部 8 个 GraphRAG 问题保存了
+`retrieved_raw`、`scope_accepted`、`relevance_scored`、`ranked`、`entered_final_top_k` 和
+`entered_prompt`，但没有保存 `extracted`、`normalized` 或 `persisted` 快照。
+
+因此，Q01 的 `陈航 --HAS_ROLE--> 数据工程师`、Q24 的
+`流光监控平台 --MONITORS--> Atlas事件服务`、以及 Q41 的
+`北极星检索平台 --NOT_DEPENDS_ON--> 天枢知识平台` 都只能严谨地归为
+`insufficient_evidence`：不能从 `retrieved_raw` 缺失倒推抽取、规范化或 Neo4j 持久化失败。
+对 Q41 还必须保持开放世界语义：缺少 `DEPENDS_ON` 不等于已获得 `NOT_DEPENDS_ON`。
+
+后续 S4.7b 若要修复关系质量，应先在新的受控 run 中写入这三个缺失的 ingestion snapshots，
+再依据相邻阶段的 exact-edge、endpoint、canonical predicate、direction 与 provenance
+匹配情况归因；不得改写本次原始 trace 或把派生报告当作关系修复证据。

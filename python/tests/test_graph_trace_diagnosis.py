@@ -28,7 +28,7 @@ def _trace(*stages):
     (("extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted"), "insufficient_evidence"),
     (("extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted", "relevance_scored"), "insufficient_evidence"),
     (("extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted", "relevance_scored", "entered_final_top_k"), "insufficient_evidence"),
-    (("extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted", "relevance_scored", "entered_final_top_k", "entered_prompt"), "prompt_present"),
+    (("extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted", "relevance_scored", "ranked", "entered_final_top_k", "entered_prompt"), "prompt_present"),
 ])
 def test_missing_unobserved_stage_never_causes_false_attribution(stages, expected):
     diagnosis = diagnose_first_loss(EXPECTED, _trace(*stages))
@@ -42,7 +42,7 @@ def test_empty_extraction_snapshot_is_an_extraction_loss():
 
 _ORDERED_STAGES = (
     "extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted",
-    "relevance_scored", "entered_final_top_k", "entered_prompt",
+    "relevance_scored", "ranked", "entered_final_top_k", "entered_prompt",
 )
 
 
@@ -76,7 +76,7 @@ def test_first_explicitly_empty_transition_is_classified(stage, expected):
 def test_predicate_and_direction_are_scored_separately(predicate, direction):
     trace = {"stages": {stage: [_edge(predicate, direction)] for stage in (
         "extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted",
-        "relevance_scored", "entered_final_top_k", "entered_prompt",
+        "relevance_scored", "ranked", "entered_final_top_k", "entered_prompt",
     )}}
     result = diagnose_first_loss(EXPECTED, trace)
     expected = "prompt_present" if (predicate in {"PROVIDES_INDEX", "提供检索索引"} and direction == "forward") else "extraction_missing"
@@ -91,7 +91,7 @@ def test_multi_hop_is_diagnosed_edge_by_edge_and_requires_complete_prompt_path()
     complete_edge = {"subject": "A", "predicate": "DEPENDS_ON", "object": "B", "direction": "forward"}
     trace = {"stages": {stage: [complete_edge] for stage in (
         "extracted", "normalized", "persisted", "retrieved_raw", "scope_accepted",
-        "relevance_scored", "entered_final_top_k", "entered_prompt",
+        "relevance_scored", "ranked", "entered_final_top_k", "entered_prompt",
     )}}
     result = diagnose_first_loss(expected, trace)
     assert result["edge_diagnoses"][0]["first_loss"] == "prompt_present"

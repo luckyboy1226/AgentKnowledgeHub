@@ -22,6 +22,35 @@ class FirstLoss(str, Enum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
+# This is intentionally separate from ``FirstLoss``.  The latter is the
+# original public result vocabulary used by the S4.6a fake-only contracts.
+# The expanded vocabulary is used by the immutable-run analyzer and makes the
+# evidence boundary explicit without changing historic reports.
+_DETAILED_STAGE = {
+    FirstLoss.EXTRACTION_MISSING: "lost_at_extraction",
+    FirstLoss.NORMALIZATION_CHANGED: "lost_at_normalization",
+    FirstLoss.PERSISTENCE_MISSING: "lost_at_persistence",
+    FirstLoss.RETRIEVAL_MISSING: "lost_at_retrieval",
+    FirstLoss.SCOPE_FILTERED: "rejected_by_scope",
+    FirstLoss.RELEVANCE_FILTERED: "lost_at_relevance_filter",
+    FirstLoss.TOP_K_TRUNCATED: "lost_at_top_k",
+    FirstLoss.PROMPT_PRESENT: "entered_prompt",
+    FirstLoss.INSUFFICIENT_EVIDENCE: "insufficient_evidence",
+}
+
+_ORDERED_STAGES = (
+    GraphTraceStage.EXTRACTED.value,
+    GraphTraceStage.NORMALIZED.value,
+    GraphTraceStage.PERSISTED.value,
+    GraphTraceStage.RETRIEVED_RAW.value,
+    GraphTraceStage.SCOPE_ACCEPTED.value,
+    GraphTraceStage.RELEVANCE_SCORED.value,
+    GraphTraceStage.RANKED.value,
+    GraphTraceStage.ENTERED_FINAL_TOP_K.value,
+    GraphTraceStage.ENTERED_PROMPT.value,
+)
+
+
 @dataclass(frozen=True)
 class ExpectedTraceEdge:
     subject: str
@@ -58,6 +87,104 @@ def _predicate_match(expected: ExpectedTraceEdge, edge: dict[str, Any]) -> bool:
     ).predicate == expected.predicate
 
 
+def _provenance_complete(edge: dict[str, Any]) -> bool:
+    """A graph edge is safe to attribute only with its complete provenance."""
+    return bool(
+        str(edge.get("document_id", "")).strip()
+        and isinstance(edge.get("document_version"), int)
+        and not isinstance(edge.get("document_version"), bool)
+        and str(edge.get("source", "")).strip()
+        and str(edge.get("evidence_key", "")).strip()
+    )
+
+
+def _stage_counts(expected: ExpectedTraceEdge, snapshot: object) -> dict[str, int | bool]:
+    """Return independent endpoint/predicate/direction observations.
+
+    A false exact match must not be collapsed into an endpoint mismatch: that
+    distinction is the core safeguard against blaming a predicate conversion
+    on retrieval.  An absent snapshot is represented explicitly rather than
+    as an empty list.
+    """
+    if not isinstance(snapshot, list):
+        return {
+            "snapshot_present": False, "edge_count": 0, "exact_matches": 0,
+            "endpoint_matches": 0, "predicate_matches": 0,
+            "direction_matches": 0, "provenance_complete_matches": 0,
+        }
+    edges = [edge for edge in snapshot if isinstance(edge, dict)]
+    endpoint = [edge for edge in edges if _endpoint_match(expected, edge)]
+    predicate = [edge for edge in edges if _predicate_match(expected, edge)]
+    direction = [
+        edge for edge in edges
+        if _endpoint_match(expected, edge) and _predicate_match(expected, edge)
+        and str(edge.get("direction", "")).strip() == expected.direction
+    ]
+    exact = [edge for edge in direction if _matches(expected, edge)]
+    return {
+        "snapshot_present": True,
+        "edge_count": len(edges),
+        "exact_matches": len(exact),
+        "endpoint_matches": len(endpoint),
+        "predicate_matches": len(predicate),
+        "direction_matches": len(direction),
+        "provenance_complete_matches": sum(_provenance_complete(edge) for edge in exact),
+    }
+
+
+def _detailed_first_loss(
+    stage_counts: dict[str, dict[str, int | bool]], rejections: object, raw_snapshot: object,
+) -> tuple[FirstLoss, str, str]:
+    """Classify only an observed adjacent transition.
+
+    There is deliberately no fallback from ``retrieved_raw == 0`` to an
+    ingestion conclusion: the real S4.6b trace begins at retrieval.  The
+    analyzer therefore returns ``insufficient_evidence`` unless extraction,
+    normalization and persistence snapshots are all actually present.
+    """
+    first = _ORDERED_STAGES[0]
+    if not bool(stage_counts[first]["snapshot_present"]):
+        return FirstLoss.INSUFFICIENT_EVIDENCE, "missing_extraction_snapshot", "pre-retrieval snapshots were not persisted"
+    if int(stage_counts[first]["exact_matches"]) == 0:
+        return FirstLoss.EXTRACTION_MISSING, "extracted_snapshot_has_no_exact_edge", "extraction snapshot is present and has no exact edge"
+
+    transitions = (
+        (GraphTraceStage.NORMALIZED.value, FirstLoss.NORMALIZATION_CHANGED, "normalized snapshot lacks exact edge"),
+        (GraphTraceStage.PERSISTED.value, FirstLoss.PERSISTENCE_MISSING, "persisted snapshot lacks exact edge"),
+        (GraphTraceStage.RETRIEVED_RAW.value, FirstLoss.RETRIEVAL_MISSING, "retrieved raw snapshot lacks exact edge"),
+        (GraphTraceStage.SCOPE_ACCEPTED.value, FirstLoss.SCOPE_FILTERED, "scope accepted snapshot lacks exact edge"),
+        (GraphTraceStage.RELEVANCE_SCORED.value, FirstLoss.RELEVANCE_FILTERED, "relevance snapshot lacks exact edge"),
+        (GraphTraceStage.RANKED.value, FirstLoss.RELEVANCE_FILTERED, "ranked snapshot lacks exact edge"),
+        (GraphTraceStage.ENTERED_FINAL_TOP_K.value, FirstLoss.TOP_K_TRUNCATED, "final Top-K snapshot lacks exact edge"),
+        (GraphTraceStage.ENTERED_PROMPT.value, FirstLoss.TOP_K_TRUNCATED, "prompt snapshot lacks exact edge"),
+    )
+    previous = first
+    for stage, loss, reason in transitions:
+        if not bool(stage_counts[stage]["snapshot_present"]):
+            return FirstLoss.INSUFFICIENT_EVIDENCE, f"missing_{stage}_snapshot", "an adjacent stage snapshot was not persisted"
+        if int(stage_counts[previous]["exact_matches"]) > 0 and int(stage_counts[stage]["exact_matches"]) == 0:
+            if stage == GraphTraceStage.SCOPE_ACCEPTED.value:
+                # Scope is special: a missing accepted edge proves nothing
+                # without a rejection record for the retrieved identity.
+                rejected = {
+                    str(item.get("fingerprint", "")) for item in rejections
+                    if isinstance(item, dict)
+                } if isinstance(rejections, list) else set()
+                raw_matches = {
+                    edge_fingerprint(edge) for edge in raw_snapshot
+                    if isinstance(raw_snapshot, list) and isinstance(edge, dict)
+                }
+                if not rejected.intersection(raw_matches):
+                    return FirstLoss.INSUFFICIENT_EVIDENCE, "scope_snapshot_without_matching_rejection", "scope transition has no matching rejection evidence"
+            if stage == GraphTraceStage.RANKED.value:
+                return loss, "ranked_snapshot_lacks_exact_edge", reason
+            if stage == GraphTraceStage.ENTERED_PROMPT.value:
+                return loss, "prompt_snapshot_lacks_exact_edge", "edge entered final Top-K but not prompt"
+            return loss, f"{stage}_snapshot_lacks_exact_edge", reason
+        previous = stage
+    return FirstLoss.PROMPT_PRESENT, "exact_edge_entered_prompt", "exact edge appears in every observed stage through prompt"
+
+
 def diagnose_first_loss(expected_path: Iterable[Iterable[object]], trace: dict[str, Any]) -> dict[str, Any]:
     """Classify each expected edge without inferring an unavailable snapshot.
 
@@ -70,52 +197,26 @@ def diagnose_first_loss(expected_path: Iterable[Iterable[object]], trace: dict[s
         stages = {}
     rejections = trace.get("rejections") if isinstance(trace, dict) else []
     normalized_expected = [ExpectedTraceEdge.from_value(edge) for edge in expected_path]
-    ordered = (
-        (GraphTraceStage.EXTRACTED.value, FirstLoss.EXTRACTION_MISSING),
-        (GraphTraceStage.NORMALIZED.value, FirstLoss.NORMALIZATION_CHANGED),
-        (GraphTraceStage.PERSISTED.value, FirstLoss.PERSISTENCE_MISSING),
-        (GraphTraceStage.RETRIEVED_RAW.value, FirstLoss.RETRIEVAL_MISSING),
-        (GraphTraceStage.SCOPE_ACCEPTED.value, FirstLoss.SCOPE_FILTERED),
-        (GraphTraceStage.RELEVANCE_SCORED.value, FirstLoss.RELEVANCE_FILTERED),
-        (GraphTraceStage.ENTERED_FINAL_TOP_K.value, FirstLoss.TOP_K_TRUNCATED),
-        (GraphTraceStage.ENTERED_PROMPT.value, FirstLoss.PROMPT_PRESENT),
-    )
     results: list[dict[str, Any]] = []
     for expected in normalized_expected:
-        first_loss = FirstLoss.INSUFFICIENT_EVIDENCE
-        matched_stages: list[str] = []
-        previous_present = False
-        for stage, missing_loss in ordered:
-            snapshot = stages.get(stage)
-            if not isinstance(snapshot, list):
-                # No snapshot means no causal inference can be made.
-                break
-            present = any(isinstance(edge, dict) and _matches(expected, edge) for edge in snapshot)
-            if present:
-                matched_stages.append(stage)
-                previous_present = True
-                continue
-            if previous_present:
-                first_loss = missing_loss
-            elif stage == GraphTraceStage.EXTRACTED.value:
-                first_loss = FirstLoss.EXTRACTION_MISSING
-            break
-        else:
-            first_loss = FirstLoss.PROMPT_PRESENT if GraphTraceStage.ENTERED_PROMPT.value in matched_stages else FirstLoss.INSUFFICIENT_EVIDENCE
-        # A scope loss requires a concrete rejection of the same raw edge;
-        # merely lacking an accepted snapshot is not enough to blame scope.
-        if first_loss is FirstLoss.SCOPE_FILTERED:
-            raw_edges = stages.get(GraphTraceStage.RETRIEVED_RAW.value, [])
-            matching_fingerprints = {
-                edge_fingerprint(edge) for edge in raw_edges
+        stage_counts = {stage: _stage_counts(expected, stages.get(stage)) for stage in _ORDERED_STAGES}
+        matched_stages = [
+            stage for stage in _ORDERED_STAGES
+            if int(stage_counts[stage]["exact_matches"]) > 0
+        ]
+        first_loss, loss_reason, evidence_boundary = _detailed_first_loss(
+            stage_counts,
+            rejections,
+            [
+                edge for edge in stages.get(GraphTraceStage.RETRIEVED_RAW.value, [])
                 if isinstance(edge, dict) and _matches(expected, edge)
-            }
-            rejected_fingerprints = {
-                str(item.get("fingerprint")) for item in rejections
-                if isinstance(item, dict) and item.get("fingerprint")
-            } if isinstance(rejections, list) else set()
-            if not matching_fingerprints.intersection(rejected_fingerprints):
-                first_loss = FirstLoss.INSUFFICIENT_EVIDENCE
+            ],
+        )
+        detailed_stage = _DETAILED_STAGE[first_loss]
+        if loss_reason == "ranked_snapshot_lacks_exact_edge":
+            detailed_stage = "lost_at_ranking"
+        elif loss_reason == "prompt_snapshot_lacks_exact_edge":
+            detailed_stage = "lost_before_prompt"
         all_edges = [edge for snapshot in stages.values() if isinstance(snapshot, list) for edge in snapshot if isinstance(edge, dict)]
         endpoint_match = any(_endpoint_match(expected, edge) for edge in all_edges)
         canonical_predicate_match = any(_predicate_match(expected, edge) for edge in all_edges)
@@ -146,8 +247,13 @@ def diagnose_first_loss(expected_path: Iterable[Iterable[object]], trace: dict[s
             "canonical_predicate_match": canonical_predicate_match,
             "direction_match": direction_match,
             "endpoint_match": endpoint_match,
-            "evidence_sufficient": all(stage in stages for stage, _loss in ordered),
+            "evidence_sufficient": all(bool(stage_counts[stage]["snapshot_present"]) for stage in _ORDERED_STAGES),
             "failure_category": failure_category,
+            "first_loss_stage": detailed_stage,
+            "loss_reason": loss_reason,
+            "confidence": "high" if first_loss is not FirstLoss.INSUFFICIENT_EVIDENCE else "low",
+            "evidence_boundary": evidence_boundary,
+            "stage_counts": stage_counts,
         })
     complete = bool(results) and all(item["first_loss"] == FirstLoss.PROMPT_PRESENT.value for item in results)
     return {"edge_diagnoses": results, "complete_path_entered_prompt": complete}
