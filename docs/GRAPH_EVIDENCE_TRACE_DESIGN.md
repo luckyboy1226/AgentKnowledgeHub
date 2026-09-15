@@ -137,3 +137,29 @@ exact allowlisted document UUID/version events into the per-question graph
 trace before retrieval. This adds no provider call and no database query.
 Missing snapshots remain `insufficient_evidence`; there is no public trace
 read API or caller-controlled trace output path.
+
+## S4.8a: immutable relation-gap attribution
+
+`scripts/analyze-graph-trace-gaps.py` is a second, offline-only derived
+analysis. It hashes the ingestion journal plus the four existing run artifacts
+before and after processing and writes only to a new sibling output directory.
+It does not initialise a Provider, API application, MongoDB, Chroma or Neo4j
+client.
+
+For the observed extraction-stage misses it distinguishes an actually absent
+relation edge from a bounded raw-predicate semantic signal, predicate
+canonicalisation gap, endpoint alias mismatch, and reversed endpoints. The
+journal is deliberately **not** a complete entity inventory and contains no
+chunk ordinal or text. Therefore `entity_not_extracted` and
+`cross_chunk_separation` are reported as `insufficient_evidence` unless a
+future journal schema records safe identity/ordinal evidence. An exact-string
+miss alone must never be called an extraction failure.
+
+For a persisted relation that appears absent in retrieval, the analyzer checks
+the exact and conservative alias-equivalent relation at `persisted`,
+`retrieved_raw`, and `entered_prompt`. Query rewrite entities, hop limits and
+runtime predicate filters are not present in the current journal; claims about
+query-seed, traversal or ranking failures remain `insufficient_evidence` until
+those fields are safely traced. Derived reports contain only relation identity,
+safe source basenames, UUIDs, bounded raw predicates and counts—never fixture
+body text, prompts, answers, credentials, connection strings or paths.
