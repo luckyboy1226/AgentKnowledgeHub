@@ -10,6 +10,7 @@ from uuid import UUID
 
 from agents.knowledge_extract_agent import Entity, Relation
 from config import settings
+from services.entity_match import entity_match_key
 from services.relation_semantics import (
     RELATION_SEMANTICS_VERSION,
     canonicalize_relation,
@@ -42,6 +43,7 @@ class KnowledgeGraphService:
         """Create additive indexes/constraints only; never drop existing schema."""
         index_queries = [
             "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.name)",
+            "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.entity_match_key)",
             "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.type)",
             "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.source)",
             "CREATE CONSTRAINT document_version_key IF NOT EXISTS FOR (dv:DocumentVersion) REQUIRE dv.key IS UNIQUE",
@@ -100,15 +102,16 @@ class KnowledgeGraphService:
         cypher = """
         MERGE (e:Entity {name: $name})
         ON CREATE SET e.type = $type, e.description = $description,
-          e.version = $version, e.source = $source, e.created_at = $now, e.updated_at = $now
+          e.entity_match_key = $entity_match_key, e.version = $version, e.source = $source, e.created_at = $now, e.updated_at = $now
         ON MATCH SET e.description = CASE WHEN $description <> '' THEN $description ELSE e.description END,
-          e.version = $version, e.updated_at = $now
+          e.entity_match_key = coalesce(e.entity_match_key, $entity_match_key), e.version = $version, e.updated_at = $now
         """
         async with self._driver.session() as session:
             await session.run(
                 cypher,
                 {
                     "name": entity.name,
+                    "entity_match_key": entity_match_key(entity.name),
                     "type": entity.type,
                     "description": entity.description,
                     "version": version,
@@ -284,13 +287,14 @@ class KnowledgeGraphService:
             MATCH (dv:DocumentVersion {key: $key})
             MERGE (e:Entity {name: $name})
             ON CREATE SET e.type = $type, e.description = $description,
-              e.created_at = $now, e.updated_at = $now
+              e.entity_match_key = $entity_match_key, e.created_at = $now, e.updated_at = $now
             ON MATCH SET e.description = CASE WHEN $description <> '' THEN $description ELSE e.description END,
-              e.updated_at = $now
+              e.entity_match_key = coalesce(e.entity_match_key, $entity_match_key), e.updated_at = $now
             MERGE (dv)-[:MENTIONS]->(e)
             """,
             key=version_key,
             name=name,
+            entity_match_key=entity_match_key(name),
             type=entity_type,
             description=description,
             now=now,
@@ -522,9 +526,19 @@ class KnowledgeGraphService:
     ) -> list[dict]:
         """Retrieve current/legacy facts, or only exact provenance for scoped evaluation."""
         safe_hops = min(max(int(hops), 1), 5)
+        match_key = entity_match_key(entity_name)
+        if not match_key:
+            return []
+        # This fixed Cypher expression is a legacy-only fallback for rows that
+        # predate entity_match_key. It removes whitespace only—no suffix or
+        # substring matching—and all values remain parameters.
+        entity_filter = (
+            "(start.name = $name OR start.entity_match_key = $entity_match_key OR "
+            "replace(replace(toLower(start.name), ' ', ''), '　', '') = $entity_match_key)"
+        )
         if allowed_document_ids is None:
             relationship_filter = self._current_or_legacy_relationship_filter("rel")
-            parameters: dict[str, Any] = {"name": entity_name, "limit": 50}
+            parameters: dict[str, Any] = {"name": entity_name, "entity_match_key": match_key, "limit": 50}
         else:
             # This parameterized condition applies to every hop: empty and
             # legacy provenance cannot satisfy it and there is no full-graph fallback.
@@ -534,14 +548,15 @@ class KnowledgeGraphService:
             )
             parameters = {
                 "name": entity_name,
+                "entity_match_key": match_key,
                 "limit": 50,
                 "allowed_document_ids": sorted(allowed_document_ids),
                 "relation_semantics_version": RELATION_SEMANTICS_VERSION,
             }
         if allowed_document_ids is None:
             cypher = f"""
-            MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
-            WHERE ALL(rel IN rels WHERE {relationship_filter})
+            MATCH path = (start:Entity)-[rels*1..{safe_hops}]-(neighbor:Entity)
+            WHERE {entity_filter} AND ALL(rel IN rels WHERE {relationship_filter})
             RETURN start.name AS source,
               [rel IN rels | type(rel)] AS relations,
               neighbor.name AS target, neighbor.type AS target_type, neighbor.description AS target_desc,
@@ -556,7 +571,8 @@ class KnowledgeGraphService:
             # path traversed it forward or reverse.  This data shape is only
             # used by the internal, scoped evaluation path.
             cypher = f"""
-            MATCH path = (start:Entity {{name: $name}})-[rels*1..{safe_hops}]-(neighbor:Entity)
+            MATCH path = (start:Entity)-[rels*1..{safe_hops}]-(neighbor:Entity)
+            WHERE {entity_filter}
             WITH path, nodes(path) AS path_nodes, relationships(path) AS rels
             WHERE ALL(rel IN rels WHERE {relationship_filter})
             RETURN path_nodes[0].name AS source,

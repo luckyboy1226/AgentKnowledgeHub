@@ -48,6 +48,34 @@ def test_provides_index_synonyms_share_one_semantic_class():
     assert canonicalize_relation("提供检索索引").predicate == "PROVIDES_INDEX"
 
 
+@pytest.mark.parametrize("raw", ["监控", "监测", "负责监控"])
+def test_reviewed_monitoring_terms_are_directed_monitors(raw):
+    assert canonicalize_relation(raw).predicate == "MONITORS"
+
+
+@pytest.mark.parametrize("raw", ["不依赖", "并不依赖", "未依赖"])
+def test_reviewed_explicit_negations_are_not_depends_on(raw):
+    assert canonicalize_relation(raw).predicate == "NOT_DEPENDS_ON"
+
+
+@pytest.mark.parametrize("raw", ["不使用", "不负责", "不属于", "没有依赖"])
+def test_unreviewed_or_non_dependency_negations_remain_related(raw):
+    assert canonicalize_relation(raw).predicate == "RELATED_TO"
+
+
+def test_legacy_related_to_is_reinterpreted_only_for_exact_reviewed_raw_predicate():
+    assert canonicalize_relation("RELATED_TO", raw_predicate="监控").predicate == "MONITORS"
+    assert canonicalize_relation("RELATED_TO", raw_predicate="不依赖").predicate == "NOT_DEPENDS_ON"
+    assert canonicalize_relation("RELATED_TO", raw_predicate="不使用").predicate == "RELATED_TO"
+    assert canonicalize_relation("RELATED_TO", raw_predicate="").predicate == "RELATED_TO"
+
+
+def test_monitoring_and_negative_dependency_do_not_become_positive_dependency():
+    assert canonicalize_relation("监控").predicate != "DEPENDS_ON"
+    assert canonicalize_relation("不依赖").predicate != "DEPENDS_ON"
+    assert canonicalize_relation("提供检索索引").predicate != "DEPENDS_ON"
+
+
 def test_raw_predicate_is_bounded_without_affecting_canonical_value():
     relation = canonicalize_relation("依赖", raw_predicate="x" * 400)
     assert relation.predicate == "DEPENDS_ON"
@@ -99,6 +127,18 @@ def test_scoped_evidence_never_conflates_provides_index_with_depends_on():
     depends = QAAgent._format_scoped_graph_evidence([_edge("DEPENDS_ON")])
     assert "DEPENDS_ON" not in provides
     assert "PROVIDES_INDEX_TO" not in depends
+
+
+def test_legacy_scoped_related_evidence_uses_exact_raw_predicate_without_losing_provenance():
+    document_id = "11111111-1111-4111-8111-111111111111"
+    raw = _edge("RELATED_TO", raw="监控")
+    raw["document_id"] = document_id
+    evidence = QAAgent._scoped_graph_evidence({
+        "evidence_edges": [{**raw, "status": "ready", "is_current": True}],
+    }, frozenset({document_id}))
+    assert evidence is not None
+    assert evidence[0]["predicate"] == "MONITORS"
+    assert evidence[0]["raw_predicate"] == "监控"
 
 
 def test_relation_fidelity_requires_exact_predicate_and_direction():

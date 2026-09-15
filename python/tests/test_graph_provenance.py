@@ -132,6 +132,7 @@ async def test_repeated_stage_uses_merge_for_idempotence(graph):
 async def test_mentions_are_merged_not_duplicated(graph):
     await graph.stage_document_version("doc-a", 1, "hash", "a.txt", entities(), relations())
     assert "MERGE (dv)-[:MENTIONS]->(e)" in queries(graph)
+    assert any(item.get("entity_match_key") for item in params(graph))
 
 
 @pytest.mark.asyncio
@@ -363,3 +364,14 @@ async def test_scoped_neighbor_query_returns_raw_predicate_and_semantics_version
     text = queries(graph)
     assert "raw_predicate: coalesce(rels[index].raw_predicate" in text
     assert "relation_semantics_version: coalesce(rels[index].relation_semantics_version" in text
+
+
+@pytest.mark.asyncio
+async def test_neighbor_query_uses_strict_match_key_and_parameterized_legacy_whitespace_fallback(graph):
+    await graph.get_neighbors("Atlas事件服务", allowed_document_ids=frozenset({"doc-a"}))
+    query, args, _ = graph._driver.calls[-1]
+    parameters = args[0]
+    assert "start.entity_match_key = $entity_match_key" in query
+    assert "replace(replace(toLower(start.name)" in query
+    assert parameters["entity_match_key"] == "atlas事件服务"
+    assert "Atlas事件服务" not in query

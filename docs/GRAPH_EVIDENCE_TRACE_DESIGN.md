@@ -163,3 +163,20 @@ query-seed, traversal or ranking failures remain `insufficient_evidence` until
 those fields are safely traced. Derived reports contain only relation identity,
 safe source basenames, UUIDs, bounded raw predicates and counts—never fixture
 body text, prompts, answers, credentials, connection strings or paths.
+
+## S4.8b: audited semantic and strict identity compatibility
+
+`relation-semantics-v2` adds only reviewed mappings for `监控`、`监测`、`负责监控`
+to `MONITORS` and explicit `不依赖`、`并不依赖`、`未依赖` to
+`NOT_DEPENDS_ON`. Direction remains the extractor's stored head-to-tail
+direction. A legacy `RELATED_TO` can be interpreted on read only when its
+bounded raw predicate exactly equals one of these approved forms; absence of a
+positive dependency never produces a negative edge.
+
+Graph lookup now uses an `entity_match_key` based on NFKC, trim, casefold and
+Unicode whitespace removal. It handles whitespace-only identity variations
+such as `Atlas事件服务` / `Atlas 事件服务`, while deliberately rejecting suffix,
+substring, or semantic aliases such as `Atlas服务` / `Atlas事件服务`. New entity
+writes save this key. Legacy reads use a fixed, parameterized whitespace-only
+Cypher fallback; scoped provenance, UUID allowlist and ready/current checks
+remain fail-closed and are never bypassed by the match key.

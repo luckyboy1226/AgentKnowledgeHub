@@ -224,6 +224,24 @@ snapshot。详见 `docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。
 `stage_observed` marker 仅证明该阶段实际观察到空结果；它不虚构任何边，也不会将缺失
 snapshot 误判为空。
 
+## S4.8b：已确认的语义与严格实体匹配边界
+
+S4.8a 的不可变 journal 确认了两类可在离线修复的事实形状问题：审核过的原始谓词
+`监控/监测/负责监控` 应为 `MONITORS`，而明确否定的
+`不依赖/并不依赖/未依赖` 应为 `NOT_DEPENDS_ON`。这不是从缺少 `DEPENDS_ON`
+推断负边；`不使用`、`不负责`、`不属于`等不在白名单内，继续保持 `RELATED_TO`。
+新写入使用 `relation-semantics-v2` 并保留 raw predicate。旧 `RELATED_TO` 证据
+只在 raw predicate **精确等于**上述审核词时于读取/评测上下文中安全解释；不会回写 Neo4j。
+
+实体 lookup 的 `entity_match_key` 仅执行 Unicode NFKC、trim、casefold 与 Unicode
+空白移除。因此 `Atlas事件服务` 与 `Atlas 事件服务` 等价，但 `Atlas服务` 不会匹配
+`Atlas事件服务`，也不会删除“服务”“平台”“项目”等业务后缀。历史图节点可通过一个固定、
+参数化的空白兼容表达式读取；它不引入模糊或全图库回退。EvaluationScope 的 UUID、
+ready/current 和 provenance 过滤继续优先且 fail-closed，vector-only 仍不调用图谱。
+
+本轮没有修复 Q01 `HAS_ROLE` 的 `no_relation_extracted`，也没有把北极星/北极星检索平台
+这样的业务短名当作别名。尚未执行新的真实评测；关系质量是否提升仍需独立授权的小规模验证。
+
 ### S4.7b-0 instrumentation boundary
 
 S4.7b-0 实现的是评测专用的跨请求 ingestion trace journal，不改变抽取 prompt、关系语义、

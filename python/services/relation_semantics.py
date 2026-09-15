@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import re
 
 
-RELATION_SEMANTICS_VERSION = "relation-semantics-v1"
+RELATION_SEMANTICS_VERSION = "relation-semantics-v2"
 RELATED_TO = "RELATED_TO"
 
 
@@ -36,6 +36,12 @@ _ALIASES: dict[str, str] = {
     "not depends on": "NOT_DEPENDS_ON",
     "不依赖": "NOT_DEPENDS_ON",
     "不依赖于": "NOT_DEPENDS_ON",
+    "并不依赖": "NOT_DEPENDS_ON",
+    "未依赖": "NOT_DEPENDS_ON",
+    "monitors": "MONITORS",
+    "监控": "MONITORS",
+    "监测": "MONITORS",
+    "负责监控": "MONITORS",
     "responsible for": "RESPONSIBLE_FOR",
     "负责": "RESPONSIBLE_FOR",
     "共同负责": "CO_RESPONSIBLE_FOR",
@@ -80,6 +86,19 @@ for _predicate in (
 # future storage without modifying the fixture itself.
 _ALIASES[_alias_key("PROVIDES_INDEX_TO")] = "PROVIDES_INDEX"
 
+# Legacy evidence may have been stored as RELATED_TO while retaining a bounded
+# audited raw predicate.  Only these *exact* reviewed raw forms may be
+# reinterpreted on read.  This never infers a negative fact from an absent
+# dependency and intentionally excludes such phrases as “不使用” or “不负责”.
+_RELATED_RAW_REINTERPRETATIONS = {
+    _alias_key("监控"): "MONITORS",
+    _alias_key("监测"): "MONITORS",
+    _alias_key("负责监控"): "MONITORS",
+    _alias_key("不依赖"): "NOT_DEPENDS_ON",
+    _alias_key("并不依赖"): "NOT_DEPENDS_ON",
+    _alias_key("未依赖"): "NOT_DEPENDS_ON",
+}
+
 
 @dataclass(frozen=True)
 class CanonicalRelation:
@@ -92,6 +111,8 @@ def canonicalize_relation(value: object, *, raw_predicate: object | None = None)
     """Return a reviewed canonical predicate and the safely bounded raw label."""
     raw = " ".join(str(raw_predicate if raw_predicate is not None else value or "").split())
     predicate = _ALIASES.get(_alias_key(value), RELATED_TO)
+    if predicate == RELATED_TO and raw_predicate is not None:
+        predicate = _RELATED_RAW_REINTERPRETATIONS.get(_alias_key(raw), RELATED_TO)
     return CanonicalRelation(predicate=predicate, raw_predicate=raw[:160])
 
 
