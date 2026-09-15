@@ -191,6 +191,10 @@ class DocumentProcessorAdapter:
                 graph_trace, "extracted", extraction, document_id=document_id, version=version,
                 source=source, status="processing", is_current=False,
             )
+            self._record_trace_stage(
+                graph_trace, "extracted", document_id=document_id, version=version,
+                source=source, status="processing", is_current=False,
+            )
             try:
                 entities, relations, dropped_relation_count = self._normalize_extraction(
                     extraction, graph_trace=graph_trace, document_id=document_id,
@@ -202,6 +206,10 @@ class DocumentProcessorAdapter:
                     **classify_safe_processing_error(exc, phase="normalize").as_dict(),
                 )
                 raise
+            self._record_trace_stage(
+                graph_trace, "normalized", document_id=document_id, version=version,
+                source=source, status="processing", is_current=False,
+            )
             self._audit(
                 operation_id,
                 "extract",
@@ -349,7 +357,10 @@ class DocumentProcessorAdapter:
             head, tail = str(relation.head or "").strip(), str(relation.tail or "").strip()
             if not head or not tail:
                 if graph_trace is not None:
-                    graph_trace.reject("invalid_relation", stage="extracted")
+                    graph_trace.reject(
+                        "invalid_relation", stage="extracted",
+                        edge=self._trace_edge(relation, document_id=document_id, version=version, source=source),
+                    )
                 raise InvalidExtractionResult("Relation endpoint is incomplete")
             if head not in entity_names or tail not in entity_names:
                 # Never synthesize a graph node from an unsupported provider
@@ -359,6 +370,7 @@ class DocumentProcessorAdapter:
                     graph_trace.reject(
                         "dangling_subject" if head not in entity_names else "dangling_object",
                         stage="normalized",
+                        edge=self._trace_edge(relation, document_id=document_id, version=version, source=source),
                     )
                 continue
             # Keep raw extraction evidence while mapping only reviewed aliases
@@ -393,6 +405,44 @@ class DocumentProcessorAdapter:
             source=source, status="processing", is_current=False,
         )
         return entities, relations, dropped_relation_count
+
+    @staticmethod
+    def _trace_edge(relation: Relation, *, document_id: str, version: int, source: str) -> dict[str, Any]:
+        """Build bounded identity only for an optional trace rejection."""
+        from services.relation_semantics import canonicalize_relation
+
+        head, tail = str(relation.head or "").strip(), str(relation.tail or "").strip()
+        properties = relation.properties or {}
+        semantic = canonicalize_relation(
+            relation.relation,
+            raw_predicate=properties.get("raw_predicate", relation.relation),
+        )
+        material = "\x1f".join((str(document_id), str(int(version)), head, semantic.predicate, tail))
+        return {
+            "subject": head, "predicate": semantic.predicate, "raw_predicate": semantic.raw_predicate,
+            "object": tail, "direction": "forward", "document_id": str(document_id),
+            "document_version": int(version), "source": safe_filename(source),
+            "status": "processing", "is_current": False,
+            "evidence_key": hashlib.sha256(material.encode("utf-8")).hexdigest(),
+            "relation_semantics_version": semantic.semantics_version,
+        }
+
+    @staticmethod
+    def _record_trace_stage(
+        trace: Any | None, stage: str, *, document_id: str, version: int,
+        source: str, status: str, is_current: bool,
+    ) -> None:
+        """Mark an observed ingestion stage even when extraction found no edges."""
+        recorder = getattr(trace, "record_stage", None) if trace is not None else None
+        if callable(recorder):
+            recorder(
+                stage,
+                document_id=document_id,
+                document_version=int(version),
+                source=source,
+                status=status,
+                is_current=bool(is_current),
+            )
 
     @staticmethod
     def _record_relation_trace(

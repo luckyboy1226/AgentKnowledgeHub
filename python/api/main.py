@@ -23,7 +23,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -49,6 +49,7 @@ from services.document_update_coordinator import (
     OperationBusyError,
     OperationIdentityConflictError,
 )
+from services.graph_evidence_trace import EvaluationTraceJournal
 from providers.factory import create_chat_provider, create_embedding_provider
 from providers.embeddings import EmbeddingProviderError
 from agents.doc_parser_agent import DocParserAgent
@@ -62,6 +63,7 @@ mongo_client = None
 document_registry: DocumentRegistry | None = None
 document_coordinator: DocumentUpdateCoordinator | None = None
 MAX_DOCUMENT_UPLOAD_BYTES = 25 * 1024 * 1024
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_document_coordinator(
@@ -279,18 +281,65 @@ def _optional_operation_id(value: str | None) -> str:
     return value
 
 
+def _is_loopback_request(request: Request) -> bool:
+    client = request.client
+    return bool(client and client.host in {"127.0.0.1", "::1", "localhost"})
+
+
+def _evaluation_ingestion_trace(
+    request: Request,
+    *,
+    run_id: str | None,
+    operation_id: str,
+    fixture_id: str,
+) -> EvaluationTraceJournal | None:
+    """Create the internal journal only for an enabled loopback evaluation.
+
+    This is intentionally not a public product feature: the header alone is
+    insufficient, normal uploads do not allocate a trace, and the caller
+    cannot supply an output directory.
+    """
+    if run_id is None:
+        return None
+    if not settings.evaluation_trace_enabled:
+        raise HTTPException(status_code=403, detail="Evaluation trace is disabled")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="Evaluation trace requires a loopback request")
+    try:
+        return EvaluationTraceJournal(
+            root=PROJECT_ROOT / ".runtime" / "evaluation",
+            run_id=run_id,
+            operation_id=operation_id,
+            fixture_id=safe_filename(fixture_id),
+        )
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid evaluation trace run ID") from None
+
+
 async def _create_document(
+    request: Request,
     file: UploadFile,
     logical_key: str | None,
     namespace: str,
     operation_id: str | None = None,
+    evaluation_trace_run_id: str | None = None,
 ) -> IngestResponse:
     file_name, content = await _read_document_upload(file)
     operation_id = _optional_operation_id(operation_id)
+    graph_trace = _evaluation_ingestion_trace(
+        request,
+        run_id=evaluation_trace_run_id,
+        operation_id=operation_id,
+        fixture_id=logical_key or file_name,
+    )
     try:
-        result = await _coordinator().create_document_version(
-            filename=file_name, content=content, logical_key=logical_key, namespace=namespace, operation_id=operation_id
-        )
+        create_kwargs: dict[str, Any] = {
+            "filename": file_name, "content": content, "logical_key": logical_key,
+            "namespace": namespace, "operation_id": operation_id,
+        }
+        if graph_trace is not None:
+            create_kwargs["graph_trace"] = graph_trace
+        result = await _coordinator().create_document_version(**create_kwargs)
     except Exception as exc:
         _raise_document_error(exc)
     return _safe_operation_response(result, file_name, namespace=namespace, logical_key=logical_key)
@@ -299,13 +348,19 @@ async def _create_document(
 @app.post("/api/documents", response_model=IngestResponse, tags=["文档入库"])
 @app.post("/api/ingest/upload", response_model=IngestResponse, tags=["文档入库"])
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     logical_key: str | None = Form(None),
     namespace: str = Form("default"),
     operation_id: str | None = Header(None, alias="X-Operation-Id"),
+    # The runner-only control is intentionally hidden from the product API
+    # schema.  It still requires the setting plus loopback gate below.
+    evaluation_trace_run_id: str | None = Header(
+        None, alias="X-Evaluation-Trace-Run-Id", include_in_schema=False,
+    ),
 ):
     """Create a versioned document; the legacy URL remains a compatibility alias."""
-    return await _create_document(file, logical_key, namespace, operation_id)
+    return await _create_document(request, file, logical_key, namespace, operation_id, evaluation_trace_run_id)
 
 @app.get("/api/documents/{document_id}")
 async def get_registered_document(document_id: str):
@@ -394,11 +449,13 @@ async def get_document_operation(operation_id: str):
 
 
 @app.post("/api/ingest/batch", response_model=list[IngestResponse], tags=["文档入库"])
-async def upload_batch(files: list[UploadFile] = File(...)):
+async def upload_batch(request: Request, files: list[UploadFile] = File(...)):
     """批量上传文档"""
     results = []
     for file in files:
-        resp = await _create_document(file, logical_key=None, namespace="default")
+        # Batch ingestion is intentionally a normal product path and cannot
+        # enable evaluation instrumentation.
+        resp = await _create_document(request, file, logical_key=None, namespace="default")
         results.append(resp)
     return results
 

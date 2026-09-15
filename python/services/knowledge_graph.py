@@ -186,6 +186,19 @@ class KnowledgeGraphService:
                     "relation_semantics_version": semantic.semantics_version,
                 })
             graph_trace.record_edges("persisted", edges)
+            stage_recorder = getattr(graph_trace, "record_stage", None)
+            if callable(stage_recorder):
+                # This is deliberately after the write transaction: a marker means
+                # Neo4j has committed the DocumentVersion/evidence stage, even if
+                # the document happened to contain no relations.
+                stage_recorder(
+                    "persisted",
+                    document_id=str(document_id),
+                    document_version=int(version),
+                    source=safe_source,
+                    status="processing",
+                    is_current=False,
+                )
         return result
 
     async def _stage_document_version_tx(

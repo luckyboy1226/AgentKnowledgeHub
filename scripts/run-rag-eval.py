@@ -418,8 +418,13 @@ async def _run_or_resume_evaluation(
     graph: KnowledgeGraphService | None = None
     try:
         runner, _, graph, chat, embeddings = await _build_real_runner(scope)
-        if cases is not None:
-            runner = RAGEvaluationRunner(runner.agent, cases, scope=scope, offline=False)
+        runner = RAGEvaluationRunner(
+            runner.agent,
+            cases or runner.cases,
+            scope=scope,
+            offline=False,
+            ingestion_trace_root=PROJECT_ROOT / ".runtime" / "evaluation",
+        )
         payload = await runner.run(
             run_id=run_id,
             modes=("vector_only", "graph_rag"),
@@ -643,7 +648,10 @@ async def _run_real(
                 client,
                 "POST",
                 "/api/documents",
-                headers={"X-Operation-Id": state["operation_id"]},
+                headers={
+                    "X-Operation-Id": state["operation_id"],
+                    "X-Evaluation-Trace-Run-Id": run_id,
+                },
                 data={"namespace": "default", "logical_key": logical_key},
                 files={"file": (filename, text.encode("utf-8"), "text/plain")},
             )

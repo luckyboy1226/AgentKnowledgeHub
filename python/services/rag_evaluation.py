@@ -17,7 +17,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from agents.qa_agent import EvaluationQueryPlan, QAAgent, RetrievalMode
 from services.evaluation_scope import EvaluationScope, require_verified_scope
-from services.graph_evidence_trace import GraphEvidenceTrace
+from services.graph_evidence_trace import EvaluationTraceJournal, GraphEvidenceTrace
 from services.graph_trace_diagnosis import diagnose_first_loss
 from services.relation_semantics import RELATION_SEMANTICS_VERSION, canonical_predicate, is_canonical_predicate
 
@@ -645,6 +645,7 @@ class RAGEvaluationRunner:
         *,
         scope: EvaluationScope | None = None,
         offline: bool = True,
+        ingestion_trace_root: str | Path | None = None,
     ) -> None:
         if agent.memory_service is not None:
             raise ValueError("Evaluation runner requires QAAgent(memory_service=None)")
@@ -652,6 +653,7 @@ class RAGEvaluationRunner:
         self.cases = tuple(cases)
         self.scope = require_verified_scope(scope)
         self.offline = offline
+        self.ingestion_trace_root = Path(ingestion_trace_root).resolve() if ingestion_trace_root is not None else None
         self._graph_traces: dict[str, dict[str, Any]] = {}
 
     async def run(
@@ -749,6 +751,16 @@ class RAGEvaluationRunner:
             )
             if mode is RetrievalMode.GRAPH_RAG else None
         )
+        if trace is not None and self.ingestion_trace_root is not None:
+            # The journal is read-only at QA time and applies the exact scope a
+            # second time. It cannot widen retrieval or create an ingestion
+            # event from a normal QA request.
+            EvaluationTraceJournal.merge_into_question_trace(
+                trace,
+                root=self.ingestion_trace_root,
+                run_id=plan.run_id,
+                allowed_document_ids=self.scope.allowed_document_ids,
+            )
         started = time.monotonic()
         try:
             result = await self.agent.answer_with_evaluation_plan(

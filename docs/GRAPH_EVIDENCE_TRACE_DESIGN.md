@@ -107,3 +107,33 @@ whether Q01 `HAS_ROLE`, Q24 `MONITORS`, or Q41 `NOT_DEPENDS_ON` was first lost
 in extraction, normalization, or persistence. The S4.7a report therefore
 labels those cases `insufficient_evidence`; this is an evidence boundary, not
 a claim that the expected relationship does not exist.
+
+## S4.7b-0: cross-request ingestion journal
+
+The S4.6b gap was lifecycle, not proof of an extraction defect: ingestion and
+QA are separate HTTP requests with separate in-memory trace collectors. The
+evaluation-only `EvaluationTraceJournal` closes that gap by appending safe
+`extracted`, `normalized`, and post-transaction `persisted` edge events to
+`.runtime/evaluation/<run_id>/graph-ingestion-trace.jsonl`. It is enabled only
+when the internal benchmark runner supplies a valid run ID plus operation ID,
+the request is loopback, and `EVALUATION_TRACE_ENABLED=true`; normal uploads
+and normal QA create no trace and expose no trace control in their responses.
+
+Every event binds a validated run UUID-safe ID, operation UUID, document UUID,
+version, optional safe fixture key, edge fingerprint, canonical/raw predicate,
+direction, safe source basename, evidence key, status and timestamp. It never
+records chunks, document text, prompts, answers, embeddings, credentials,
+connection strings or caller-provided paths. Stable event IDs deduplicate
+retries; cleanup preserves the journal as local ignored audit evidence.
+
+`DocumentProcessorAdapter` records extracted evidence after extraction and
+normalized evidence after dangling-endpoint filtering. Each ingestion stage
+also writes a safe `stage_observed` marker, so an observed zero-edge stage is
+distinguishable from a missing snapshot without inventing an edge.
+`KnowledgeGraphService` records persisted evidence and its marker only after
+its write transaction succeeds; a failed or rolled-back transaction writes no
+persisted edge or marker. At QA time the evaluation runner read-merges only
+exact allowlisted document UUID/version events into the per-question graph
+trace before retrieval. This adds no provider call and no database query.
+Missing snapshots remain `insufficient_evidence`; there is no public trace
+read API or caller-controlled trace output path.

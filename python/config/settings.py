@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8080
+    # Disabled by default.  Only an explicitly authorized loopback benchmark
+    # run may request the safe ingestion trace journal.
+    evaluation_trace_enabled: bool = False
 
     # MongoDB (LangGraph Checkpoint)
     mongodb_uri: str = "mongodb://localhost:27017"

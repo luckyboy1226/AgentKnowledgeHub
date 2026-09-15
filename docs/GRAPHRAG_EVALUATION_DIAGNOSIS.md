@@ -220,4 +220,16 @@ snapshot。详见 `docs/GRAPH_EVIDENCE_TRACE_DESIGN.md`。
 
 后续 S4.7b 若要修复关系质量，应先在新的受控 run 中写入这三个缺失的 ingestion snapshots，
 再依据相邻阶段的 exact-edge、endpoint、canonical predicate、direction 与 provenance
-匹配情况归因；不得改写本次原始 trace 或把派生报告当作关系修复证据。
+匹配情况归因；不得改写本次原始 trace 或把派生报告当作关系修复证据。零关系的
+`stage_observed` marker 仅证明该阶段实际观察到空结果；它不虚构任何边，也不会将缺失
+snapshot 误判为空。
+
+### S4.7b-0 instrumentation boundary
+
+S4.7b-0 实现的是评测专用的跨请求 ingestion trace journal，不改变抽取 prompt、关系语义、
+Neo4j 查询、重排或 Top-K。只有显式启用、loopback 的评测上传才会携带受控 run ID；普通上传和
+`/api/qa/ask` 默认没有 trace。抽取完成后记录 `extracted`，完成 dangling endpoint 清理与有限
+canonicalization 后记录 `normalized`，Neo4j transaction 成功后才记录 `persisted`。
+
+后续新的小规模真实授权 run 才能使用这些 snapshots 判定 Q01/Q24/Q41 的首个丢失阶段。S4.6b
+历史结果仍是不可变 baseline，不能被这个 instrumentation 回填或重新归责。
