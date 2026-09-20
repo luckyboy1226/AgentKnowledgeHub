@@ -109,13 +109,24 @@ class FrozenQueryEmbeddingSnapshot:
     def vector_for(self, *, run_id: str, plan: dict[str, Any], query_plans_hash: str,
                    embedding: dict[str, Any], query_ordinal: int=0) -> tuple[float, ...]:
         self._validate_base(run_id=run_id,query_plans_hash=query_plans_hash,embedding=embedding)
-        expected=self.planned_queries([plan]); self.validate_partial(plans=[plan],run_id=run_id,query_plans_hash=query_plans_hash,embedding=embedding)
-        if self.payload.get("snapshot_hash") is None: raise ValueError("snapshot_incomplete")
+        expected=self.planned_queries([plan])
+        root_hash=self.payload.get("snapshot_hash")
+        if root_hash is None: raise ValueError("snapshot_incomplete")
+        if root_hash!=_hash({key:self.payload[key] for key in self.payload if key!="snapshot_hash"}):
+            raise ValueError("snapshot_root_hash_mismatch")
         key=(str(plan.get("question_id") or ""),int(query_ordinal))
         expected_record=next((row for row in expected if (row["question_id"],row["query_ordinal"])==key),None)
         record=next((row for row in self.payload["records"] if (row.get("question_id"),row.get("query_ordinal"))==key),None)
         if expected_record is None or not isinstance(record,dict): raise ValueError("snapshot_question_missing")
-        return tuple(float(value) for value in record["vector"])
+        vector=tuple(float(value) for value in record.get("vector",[])); dimension=int(embedding["dimension"])
+        if (record.get("run_id")!=str(run_id) or record.get("plan_hash")!=expected_record["plan_hash"]
+                or record.get("query_text_sha256")!=expected_record["query_text_sha256"]
+                or record.get("embedding")!=dict(embedding) or record.get("vector_dimension")!=dimension
+                or len(vector)!=dimension or not all(math.isfinite(value) for value in vector)
+                or record.get("vector_sha256")!=_vector_hash(vector)
+                or record.get("snapshot_hash")!=self._record_hash(record)):
+            raise ValueError("snapshot_vector_integrity_mismatch")
+        return vector
 
     def vector_hash_for(self, **kwargs: Any) -> str:
         return _vector_hash(self.vector_for(**kwargs))

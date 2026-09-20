@@ -446,6 +446,9 @@ class ControlledRealEvaluationRunner:
         if not manifest_path.is_file() or not state_path.is_file():
             raise ValueError("g4_recovery_not_prepared")
         manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
+        recovery_state=json.loads(state_path.read_text(encoding="utf-8"))
+        if recovery_state.get("status") != "RECOVERY_PREPARED":
+            raise ValueError("g4_recovery_not_runnable")
         if any(manifest.get(key)!=value for key,value in {"recovery_id":recovery_id,**identity}.items()):
             raise ValueError("g4_recovery_identity_conflict")
         artifact_path=directory/"trace-equivalence.json"
@@ -495,6 +498,11 @@ class ControlledRealEvaluationRunner:
                      "prior_failure_artifact_sha256":identity["failure_artifact_sha256"]}
             atomic_json(artifact_path,payload); write_state("TRACE_EQUIVALENCE_VERIFIED")
             return payload
+        except Exception as exc:
+            current=json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+            if current.get("status") != "FAILED":
+                write_state("FAILED",error=type(exc).__name__,failure_phase="trace_equivalence")
+            raise
         finally:
             if any(self._file_sha256(self.path(name))!=digest for name,digest in protected.items()):
                 raise RuntimeError("g4_source_run_mutated")

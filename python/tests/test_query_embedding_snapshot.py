@@ -30,6 +30,14 @@ def test_snapshot_binds_query_plan_identity_and_rejects_tampering():
   with pytest.raises(ValueError): FrozenQueryEmbeddingSnapshot(altered).vector_for(run_id='r',plan=plan(),query_plans_hash='plans',embedding=IDENTITY)
  asyncio.run(run())
 
+def test_vector_lookup_validates_one_plan_inside_complete_multi_plan_snapshot():
+ async def run():
+  provider=Provider(); plans=[plan('Q01','one','p1'),plan('Q02','two','p2')]
+  snapshot=await freeze(provider,plans)
+  assert snapshot.vector_for(run_id='r',plan=plans[0],query_plans_hash='plans',embedding=IDENTITY)==(1.0,0.0,0.0)
+  assert snapshot.vector_for(run_id='r',plan=plans[1],query_plans_hash='plans',embedding=IDENTITY)==(0.0,1.0,0.0)
+ asyncio.run(run())
+
 def test_precomputed_vector_search_never_calls_provider():
  class Store:
   def query(self,**_): return {'documents':[['x']],'metadatas':[[{'document_id':'d','document_version':1,'chunk_id':'d:c','status':'ready','is_current':True,'source':'x.txt'}]],'distances':[[0.1]]}
