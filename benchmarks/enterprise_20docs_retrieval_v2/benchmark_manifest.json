@@ -1,0 +1,26 @@
+{
+  "benchmark_id": "enterprise_20docs_retrieval",
+  "benchmark_version": "2.0.0",
+  "category_coverage": {
+    "abstention": 12,
+    "constraint": 12,
+    "distractor": 12,
+    "multi_hop": 12,
+    "single_hop": 12
+  },
+  "coverage_gaps": [
+    "exact_identifier",
+    "semantic_paraphrase",
+    "cross_document",
+    "version_conflict"
+  ],
+  "document_count": 20,
+  "needs_manual_review_count": 0,
+  "question_count": 60,
+  "schema": {
+    "expected_edges": "subject,predicate,object,direction",
+    "relevant_chunks": "not available",
+    "relevant_documents": "stable logical document keys"
+  },
+  "source_benchmark_sha256": "2c7005ff09825c090dd9bb641ecf5b22170ffc351afc6437184494cde8030549"
+}

@@ -1,0 +1,2254 @@
+{
+  "benchmark_id": "enterprise_20docs_retrieval",
+  "benchmark_version": "2.0.0",
+  "coverage_gaps": [
+    "exact_identifier",
+    "semantic_paraphrase",
+    "cross_document",
+    "version_conflict"
+  ],
+  "questions": [
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "陈航",
+          "HAS_ROLE",
+          "数据工程师",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "陈航",
+          "HAS_ROLE",
+          "数据工程师",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D02_data_platform_team.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q01",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D02"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D01_group_organization.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q02",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D01"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D08_atlas_event_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q03",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "北极星检索平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "北极星检索平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q04",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q05",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q06",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q07",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q08",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q09",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "河图数据湖",
+          "USES",
+          "Spark",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "Iceberg",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "MinIO",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "河图数据湖",
+          "USES",
+          "Spark",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "Iceberg",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "USES",
+          "MinIO",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q10",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "流光监控平台",
+          "USES",
+          "Prometheus",
+          "forward"
+        ],
+        [
+          "流光监控平台",
+          "USES",
+          "Grafana",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "流光监控平台",
+          "USES",
+          "Prometheus",
+          "forward"
+        ],
+        [
+          "流光监控平台",
+          "USES",
+          "Grafana",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q11",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D16"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "expected_edges": [
+        [
+          "苏澄",
+          "RESPONSIBLE_FOR",
+          "曙光客户门户",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "苏澄",
+          "RESPONSIBLE_FOR",
+          "曙光客户门户",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q12",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D12"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q13",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D07",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q14",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D09",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q15",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D12",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q16",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D20",
+        "D12",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D07_northstar_retrieval_project.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q17",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D07",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "沈舟",
+          "RESPONSIBLE_FOR",
+          "河图数据湖",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "PROVIDES_DATA_TO",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "沈舟",
+          "RESPONSIBLE_FOR",
+          "河图数据湖",
+          "forward"
+        ],
+        [
+          "河图数据湖",
+          "PROVIDES_DATA_TO",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q18",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎",
+          "forward"
+        ],
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎",
+          "forward"
+        ],
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D04_intelligent_product_team.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q19",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D13",
+        "D04"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D17_cloudbridge_api_gateway.txt",
+        "D03_application_architecture_team.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q20",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D17",
+        "D03"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D10_tianshu_northstar_collaboration.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q21",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D10",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D18_incident_2026_07_18.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q22",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D18",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q23",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D20",
+        "D12",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "expected_edges": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q24",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D16",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "林岚",
+          "HEAD_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "林岚",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "赵启",
+          "CO_LEADS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D01_group_organization.txt",
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q25",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D01",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "方屿",
+          "MEMBER_OF",
+          "安全运营部",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "方屿",
+          "MEMBER_OF",
+          "安全运营部",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D05_security_operations_team.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q26",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D05",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "天枢知识平台",
+          "USES",
+          "Neo4j",
+          "forward"
+        ],
+        [
+          "天枢知识平台",
+          "USES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q27",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "猎户座权限服务",
+          "USES",
+          "Redis",
+          "forward"
+        ],
+        [
+          "猎户座权限服务",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "猎户座权限服务",
+          "PROVIDES_AUTH_TO",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "猎户座权限服务",
+          "USES",
+          "Redis",
+          "forward"
+        ],
+        [
+          "猎户座权限服务",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "猎户座权限服务",
+          "PROVIDES_AUTH_TO",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q28",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "陈航",
+          "MEMBER_OF",
+          "数据平台部",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D02_data_platform_team.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q29",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D02",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部",
+          "forward"
+        ],
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "唐悦",
+          "MEMBER_OF",
+          "智能产品部",
+          "forward"
+        ],
+        [
+          "唐悦",
+          "RESPONSIBLE_FOR",
+          "星图推荐引擎",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D04_intelligent_product_team.txt",
+        "D13_starmap_recommendation_engine.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q30",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D04",
+        "D13"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch",
+          "forward"
+        ],
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ],
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "USES",
+          "Elasticsearch",
+          "forward"
+        ],
+        [
+          "韩策",
+          "RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ],
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "晨星报表系统",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q31",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q32",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "天枢知识平台",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "DEPENDS_ON",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D09_tianshu_knowledge_platform.txt",
+        "D12_dawn_customer_portal.txt",
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q33",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D09",
+        "D12",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "赵启",
+          "HEAD_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "MEMBER_OF",
+          "应用架构部",
+          "forward"
+        ],
+        [
+          "魏衡",
+          "RESPONSIBLE_FOR",
+          "云桥API网关",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D03_application_architecture_team.txt",
+        "D08_atlas_event_service.txt",
+        "D17_cloudbridge_api_gateway.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q34",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D03",
+        "D08",
+        "D17"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "E-2026-07-18",
+          "AFFECTED",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D18_incident_2026_07_18.txt",
+        "D10_tianshu_northstar_collaboration.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q35",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D18",
+        "D10"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "expected_edges": [
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "AUTHENTICATES_VIA",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "AUTHENTICATES_VIA",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q36",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D20"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "周宁",
+          "NOT_RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "陈航",
+          "RESPONSIBLE_FOR",
+          "北极星检索平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D05_security_operations_team.txt",
+        "D07_northstar_retrieval_project.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q37",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D05",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "晨星报表系统",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q38",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_YET_MIGRATED_TO",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "星图推荐引擎",
+          "CURRENTLY_USES",
+          "Milvus",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "EVALUATES",
+          "Chroma",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_YET_MIGRATED_TO",
+          "Chroma",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D13_starmap_recommendation_engine.txt",
+        "D19_q3_technology_roadmap.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q39",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "流光监控平台",
+          "NOT_DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "流光监控平台",
+          "MONITORS",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "流光监控平台",
+          "NOT_DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D16_liuguang_observability_platform.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q40",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D16"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "北极星检索平台",
+          "PROVIDES_INDEX_TO",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "NOT_DEPENDS_ON",
+          "天枢知识平台",
+          "forward"
+        ],
+        [
+          "北极星检索平台",
+          "DEPENDS_ON",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D10_tianshu_northstar_collaboration.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q41",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D10"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "陈航",
+          "NOT_RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "赵启",
+          "RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ],
+        [
+          "陈航",
+          "NOT_RESPONSIBLE_FOR",
+          "Atlas事件服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D08_atlas_event_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q42",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "曙光客户门户",
+          "DISTINCT_FROM",
+          "星图推荐引擎",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "曙光客户门户",
+          "DISTINCT_FROM",
+          "星图推荐引擎",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D12_dawn_customer_portal.txt",
+        "D04_intelligent_product_team.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q43",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D12",
+        "D04"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "河图数据湖",
+          "NOT_USES",
+          "Elasticsearch",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "河图数据湖",
+          "NOT_USES",
+          "Elasticsearch",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D14_hetu_data_lake.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q44",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "赵启",
+          "NOT_RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "赵启",
+          "NOT_RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ],
+        [
+          "方屿",
+          "RESPONSIBLE_FOR",
+          "猎户座权限服务",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D11_orion_authorization_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q45",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "华远能源",
+          "NOT_DIRECTLY_CALLS",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "华远能源",
+          "NOT_DIRECTLY_CALLS",
+          "北极星检索平台",
+          "forward"
+        ],
+        [
+          "华远能源",
+          "USES",
+          "曙光客户门户",
+          "forward"
+        ],
+        [
+          "曙光客户门户",
+          "CALLS",
+          "天枢知识平台",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt",
+        "D12_dawn_customer_portal.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q46",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D20",
+        "D12"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "云桥API网关",
+          "NOT_RESPONSIBLE_FOR",
+          "Kafka",
+          "forward"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "云桥API网关",
+          "NOT_RESPONSIBLE_FOR",
+          "Kafka",
+          "forward"
+        ],
+        [
+          "Atlas事件服务",
+          "USES",
+          "Kafka",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D17_cloudbridge_api_gateway.txt",
+        "D08_atlas_event_service.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q47",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D17",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "expected_edges": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_USES",
+          "PostgreSQL",
+          "forward"
+        ]
+      ],
+      "expected_path": [
+        [
+          "晨星报表系统",
+          "USES",
+          "PostgreSQL",
+          "forward"
+        ],
+        [
+          "星图推荐引擎",
+          "NOT_USES",
+          "PostgreSQL",
+          "forward"
+        ]
+      ],
+      "expected_sources": [
+        "D15_morningstar_reporting_system.txt",
+        "D13_starmap_recommendation_engine.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q48",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D15",
+        "D13"
+      ]
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q49",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q50",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q51",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q52",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q53",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q54",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q55",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [
+        "D20_huayuan_energy_deployment.txt"
+      ],
+      "needs_manual_review": false,
+      "question_id": "Q56",
+      "relevant_chunks": null,
+      "relevant_documents": [
+        "D20"
+      ]
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q57",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q58",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q59",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "expected_edges": [],
+      "expected_path": [],
+      "expected_sources": [],
+      "needs_manual_review": false,
+      "question_id": "Q60",
+      "relevant_chunks": null,
+      "relevant_documents": []
+    }
+  ],
+  "relevance_level": "document",
+  "runtime_document_uuid_policy": "forbidden; map logical document key/source basename after ingestion",
+  "source_benchmark": {
+    "path": "enterprise_20docs_60q_expanded",
+    "sha256": "2c7005ff09825c090dd9bb641ecf5b22170ffc351afc6437184494cde8030549"
+  }
+}

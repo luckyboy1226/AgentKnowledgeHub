@@ -21,7 +21,7 @@ class HybridRetrieverV2:
         self, query: str, *, entities: list[str] | None = None,
         bm25_top_k: int = 20, vector_top_k: int = 20, graph_top_k: int = 20,
         allowed_document_ids: frozenset[str] | None = None, bm25_enabled: bool = False,
-        trace: Any | None = None,
+        trace: Any | None = None, selection: dict[str, bool] | None = None,
     ) -> dict[str, list[RetrievalCandidate]]:
         emit(trace, "query_received", query)
         emit(trace, "query_rewritten", (query,), entity_count=len(entities or []), keyword_count=0)
@@ -31,25 +31,24 @@ class HybridRetrieverV2:
             for stage in ("bm25_retrieved", "vector_retrieved", "graph_retrieved"):
                 emit(trace, "record_stage", stage, details={"input_count": 0, "output_count": 0}, latency_ms=0.0)
             return {"bm25": [], "vector": [], "graph": []}
+        selected = {"bm25": bool(bm25_enabled), "vector": True, "graph": True} | (selection or {})
         bm25_started = time.monotonic()
         bm25_candidates = (
             await self.bm25.search(query, bm25_top_k, allowed_document_ids=allowed_document_ids)
-            if bm25_enabled and self.bm25 is not None else []
+            if selected["bm25"] and bm25_enabled and self.bm25 is not None else []
         )
         emit(trace, "record_stage", "bm25_retrieved", candidates=bm25_candidates,
              details={"input_count": 1 if bm25_enabled and self.bm25 is not None else 0, "output_count": len(bm25_candidates)},
              latency_ms=(time.monotonic() - bm25_started) * 1000)
         vector_started = time.monotonic()
-        vector_rows = await self.vector_store.search(
-            query, top_k=vector_top_k, allowed_document_ids=allowed_document_ids
-        )
+        vector_rows = await self.vector_store.search(query, top_k=vector_top_k, allowed_document_ids=allowed_document_ids) if selected["vector"] else []
         vector_candidates = [from_vector_result(record, score, rank) for rank, (record, score) in enumerate(vector_rows, start=1)]
         emit(trace, "record_stage", "vector_retrieved", candidates=vector_candidates,
              details={"input_count": 1, "output_count": len(vector_candidates)},
              latency_ms=(time.monotonic() - vector_started) * 1000)
         graph_started = time.monotonic()
         graph_candidates: list[RetrievalCandidate] = []
-        for entity in entities or []:
+        for entity in (entities or []) if selected["graph"] else []:
             records = await self.knowledge_graph.get_neighbors(
                 entity, hops=2, limit=graph_top_k, allowed_document_ids=allowed_document_ids
             )

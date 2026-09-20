@@ -1,0 +1,674 @@
+{
+  "benchmark_id": "enterprise_20docs_retrieval",
+  "benchmark_version": "2.0.0",
+  "review": [
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "陈航属于哪个部门，担任什么职位？",
+      "question_id": "Q01",
+      "relevant_documents": [
+        "D02"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "数据平台部负责人是谁？",
+      "question_id": "Q02",
+      "relevant_documents": [
+        "D01"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "Atlas 事件服务由谁负责？",
+      "question_id": "Q03",
+      "relevant_documents": [
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "北极星检索平台当前使用哪个向量数据库？",
+      "question_id": "Q04",
+      "relevant_documents": [
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "天枢知识平台使用哪两种核心存储技术？",
+      "question_id": "Q05",
+      "relevant_documents": [
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "猎户座权限服务由谁负责？",
+      "question_id": "Q06",
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "晨星报表系统的项目负责人是谁？",
+      "question_id": "Q07",
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "晨星报表系统使用哪两种数据技术？",
+      "question_id": "Q08",
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "星图推荐引擎当前在线向量检索使用什么？",
+      "question_id": "Q09",
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "河图数据湖采用哪些核心数据技术？",
+      "question_id": "Q10",
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "流光监控平台使用什么监控与可视化工具？",
+      "question_id": "Q11",
+      "relevant_documents": [
+        "D16"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "single_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "曙光客户门户由谁负责？",
+      "question_id": "Q12",
+      "relevant_documents": [
+        "D12"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "北极星检索平台依赖的事件服务由谁负责？",
+      "question_id": "Q13",
+      "relevant_documents": [
+        "D07",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "天枢知识平台依赖的权限服务由谁负责？",
+      "question_id": "Q14",
+      "relevant_documents": [
+        "D09",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "曙光客户门户依赖的知识平台由哪两位共同负责人负责？",
+      "question_id": "Q15",
+      "relevant_documents": [
+        "D12",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "华远能源使用的门户所依赖的权限服务由谁负责？",
+      "question_id": "Q16",
+      "relevant_documents": [
+        "D20",
+        "D12",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "陈航负责的项目依赖的服务使用什么消息队列？",
+      "question_id": "Q17",
+      "relevant_documents": [
+        "D07",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "沈舟负责的数据湖向哪个报表系统提供数据？",
+      "question_id": "Q18",
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "星图推荐引擎负责人属于哪个部门？",
+      "question_id": "Q19",
+      "relevant_documents": [
+        "D13",
+        "D04"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "云桥 API 网关负责人属于哪个部门？",
+      "question_id": "Q20",
+      "relevant_documents": [
+        "D17",
+        "D03"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "天枢知识平台从哪个项目获得检索索引，该项目由谁负责？",
+      "question_id": "Q21",
+      "relevant_documents": [
+        "D10",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "E-2026-07-18 事件影响的检索平台由谁负责？",
+      "question_id": "Q22",
+      "relevant_documents": [
+        "D18",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "华远能源使用的知识平台依赖哪个权限服务？",
+      "question_id": "Q23",
+      "relevant_documents": [
+        "D20",
+        "D12",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "multi_hop",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "流光监控的服务中，哪一个同时也是北极星检索平台的依赖？",
+      "question_id": "Q24",
+      "relevant_documents": [
+        "D16",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪些人既是部门负责人，又是天枢知识平台的共同负责人？",
+      "question_id": "Q25",
+      "relevant_documents": [
+        "D01",
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "谁既属于安全运营部，又负责猎户座权限服务？",
+      "question_id": "Q26",
+      "relevant_documents": [
+        "D05",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪个项目同时使用 Neo4j 和 Chroma？",
+      "question_id": "Q27",
+      "relevant_documents": [
+        "D09"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪个服务同时使用 Redis 和 PostgreSQL，并为天枢知识平台提供鉴权？",
+      "question_id": "Q28",
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "谁既属于数据平台部，又负责北极星检索平台？",
+      "question_id": "Q29",
+      "relevant_documents": [
+        "D02",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "谁既属于智能产品部，又负责星图推荐引擎？",
+      "question_id": "Q30",
+      "relevant_documents": [
+        "D04",
+        "D13"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪个系统同时使用 PostgreSQL 和 Elasticsearch，而且负责人不是周宁？",
+      "question_id": "Q31",
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪个项目当前使用 Milvus，同时在路线图中计划评估 Chroma？",
+      "question_id": "Q32",
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪些项目都依赖猎户座权限服务？",
+      "question_id": "Q33",
+      "relevant_documents": [
+        "D09",
+        "D12",
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "负责 Atlas 事件服务和云桥 API 网关的两个人属于同一个哪个部门？",
+      "question_id": "Q34",
+      "relevant_documents": [
+        "D03",
+        "D08",
+        "D17"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "哪个项目既受到 E-2026-07-18 事件影响，又向天枢知识平台提供检索索引？",
+      "question_id": "Q35",
+      "relevant_documents": [
+        "D18",
+        "D10"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "constraint",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "华远能源的知识服务入口同时使用哪两个后端能力完成问答和认证？",
+      "question_id": "Q36",
+      "relevant_documents": [
+        "D20"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "周宁是否负责北极星检索平台？如果不是，谁负责？",
+      "question_id": "Q37",
+      "relevant_documents": [
+        "D05",
+        "D07"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "晨星报表系统是否依赖北极星检索平台或天枢知识平台？",
+      "question_id": "Q38",
+      "relevant_documents": [
+        "D15"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "星图推荐引擎是否已经切换到 Chroma？",
+      "question_id": "Q39",
+      "relevant_documents": [
+        "D13",
+        "D19"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "流光监控 Atlas 事件服务，是否意味着流光在业务上依赖 Atlas？",
+      "question_id": "Q40",
+      "relevant_documents": [
+        "D16"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "北极星为天枢提供检索索引，是否意味着北极星依赖天枢？",
+      "question_id": "Q41",
+      "relevant_documents": [
+        "D10"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "Atlas 事件服务的负责人是陈航吗？",
+      "question_id": "Q42",
+      "relevant_documents": [
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "曙光客户门户和星图推荐引擎是同一个项目吗？",
+      "question_id": "Q43",
+      "relevant_documents": [
+        "D12",
+        "D04"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "河图数据湖当前使用 Elasticsearch 吗？",
+      "question_id": "Q44",
+      "relevant_documents": [
+        "D14"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "猎户座权限服务是否由赵启负责？",
+      "question_id": "Q45",
+      "relevant_documents": [
+        "D11"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "华远能源是否直接调用北极星检索平台？",
+      "question_id": "Q46",
+      "relevant_documents": [
+        "D20",
+        "D12"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "云桥 API 网关和 Atlas 事件服务承担的是同一种职责吗？",
+      "question_id": "Q47",
+      "relevant_documents": [
+        "D17",
+        "D08"
+      ]
+    },
+    {
+      "answerable": true,
+      "category": "distractor",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "晨星报表系统和星图推荐引擎是否都使用 PostgreSQL 作为检索存储？",
+      "question_id": "Q48",
+      "relevant_documents": [
+        "D15",
+        "D13"
+      ]
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "星河智联科技集团的 CEO 是谁？",
+      "question_id": "Q49",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "星河智联科技集团的 CFO 是谁？",
+      "question_id": "Q50",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "人力资源部负责人是谁？",
+      "question_id": "Q51",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "南斗项目的负责人是谁？",
+      "question_id": "Q52",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "天枢知识平台生产环境使用的 Kubernetes 版本是多少？",
+      "question_id": "Q53",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "北极星检索平台的日活用户数是多少？",
+      "question_id": "Q54",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "星河智联科技集团 2026 年第二季度营收是多少？",
+      "question_id": "Q55",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "expected_sources basename -> benchmark_documents.id",
+      "needs_manual_review": false,
+      "question": "华远能源的本次部署位于哪个城市？",
+      "question_id": "Q56",
+      "relevant_documents": [
+        "D20"
+      ]
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "猎户座权限服务使用什么具体密码加密算法？",
+      "question_id": "Q57",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "Atlas 事件服务的 SLA 可用性百分比是多少？",
+      "question_id": "Q58",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "北极星检索平台正式上线的具体日期是什么？",
+      "question_id": "Q59",
+      "relevant_documents": []
+    },
+    {
+      "answerable": false,
+      "category": "abstention",
+      "derivation": "requires_abstention -> no relevant document",
+      "needs_manual_review": false,
+      "question": "陈航的手机号码是多少？",
+      "question_id": "Q60",
+      "relevant_documents": []
+    }
+  ]
+}
