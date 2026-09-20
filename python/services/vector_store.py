@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import math
 from pathlib import Path
 import re
 from typing import Any
@@ -392,13 +393,14 @@ class VectorStoreService:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         scope_diagnostics: dict[str, int] | None = None,
+        query_embedding: list[float] | tuple[float, ...] | None = None,
     ) -> list[tuple[dict, float]]:
         """Search current S3 rows plus legacy rows, with bounded compatibility over-fetch."""
         if top_k <= 0:
             return []
         if self._backend == "chroma":
-            q_vec = await self.embeddings.aembed_query(query)
-            if len(q_vec) != self.embeddings.dimensions:
+            q_vec = list(query_embedding) if query_embedding is not None else await self.embeddings.aembed_query(query)
+            if len(q_vec) != self.embeddings.dimensions or not all(math.isfinite(float(value)) for value in q_vec):
                 raise EmbeddingProviderError("Query embedding dimension does not match provider configuration.")
             candidate_limit = min(
                 max(int(top_k) * self.SEARCH_OVERFETCH_FACTOR, int(top_k)),
@@ -447,7 +449,8 @@ class VectorStoreService:
             for doc, score in results
         ]
         if allowed_document_ids is None:
-            return output
+            output.sort(key=lambda item: self._stable_search_order(item[0], item[1]))
+            return output[:int(top_k)]
         scoped_output: list[tuple[dict, float]] = []
         for record, score in output:
             metadata = dict(record.get("metadata") or {})
@@ -458,9 +461,8 @@ class VectorStoreService:
                     )
                 continue
             scoped_output.append((record, score))
-            if len(scoped_output) == top_k:
-                break
-        return scoped_output
+        scoped_output.sort(key=lambda item: self._stable_search_order(item[0], item[1]))
+        return scoped_output[:int(top_k)]
 
     async def get_stats(self) -> dict:
         """Return a small datastore health/statistics payload."""

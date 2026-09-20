@@ -52,6 +52,8 @@ class EvaluationQueryPlan:
     top_k: int
     run_id: str
     question_id: str
+    queries: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
 
 
 @dataclass
@@ -235,12 +237,15 @@ class QAAgent:
             raise ValueError("Evaluation top_k must be positive")
         intent = await self._classify_intent(question)
         rewritten = await self._rewrite_query(question)
-        queries = [str(value).strip() for value in rewritten.get("queries", []) if str(value).strip()]
+        queries = tuple(dict.fromkeys(str(value).strip() for value in rewritten.get("queries", []) if str(value).strip()))
         entities = tuple(
             dict.fromkeys(
                 str(value).strip() for value in rewritten.get("entities", []) if str(value).strip()
             )
         )
+        keywords = tuple(dict.fromkeys(
+            str(value).strip() for value in rewritten.get("keywords", []) if str(value).strip()
+        ))
         return EvaluationQueryPlan(
             question=question,
             normalized_query=queries[0] if queries else question,
@@ -249,6 +254,8 @@ class QAAgent:
             top_k=int(top_k),
             run_id=str(run_id),
             question_id=str(question_id),
+            queries=queries,
+            keywords=keywords,
         )
 
     async def answer_with_evaluation_plan(
