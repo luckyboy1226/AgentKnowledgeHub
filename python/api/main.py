@@ -33,6 +33,8 @@ from services.knowledge_graph import KnowledgeGraphService
 from services.memory_service import MemoryService
 from services.vector_store import VectorStoreService
 from services.document_registry import DocumentRegistry, RegistryError, safe_error
+from services.chunk_repository import ChunkRepository
+from retrieval.bm25_retriever import BM25Retriever
 from services.document_processor import (
     DocumentParseError,
     DocumentProcessorAdapter,
@@ -62,6 +64,8 @@ workflows: dict[str, Any] = {}
 mongo_client = None
 document_registry: DocumentRegistry | None = None
 document_coordinator: DocumentUpdateCoordinator | None = None
+chunk_repository: ChunkRepository | None = None
+bm25_retriever: BM25Retriever | None = None
 MAX_DOCUMENT_UPLOAD_BYTES = 25 * 1024 * 1024
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -73,20 +77,29 @@ def build_document_coordinator(
     chat_provider: Any,
     *,
     temp_root: str | Path,
+    chunks: ChunkRepository | None = None,
+    derived_index: BM25Retriever | None = None,
 ) -> DocumentUpdateCoordinator:
     """Compose document dependencies from existing lifecycle-owned clients only."""
     processor = DocumentProcessorAdapter(
         DocParserAgent(chat_provider),
         KnowledgeExtractAgent(chat_provider, timeout_policy=settings.extraction_timeout_policy),
         temp_root=temp_root,
+        parent_child_enabled=settings.parent_child_chunk_enabled,
+        parent_target_tokens=settings.parent_target_tokens,
+        parent_max_tokens=settings.parent_max_tokens,
+        child_target_tokens=settings.child_target_tokens,
+        child_overlap_tokens=settings.child_overlap_tokens,
     )
-    return DocumentUpdateCoordinator(registry, vectors, graph, processor)
+    return DocumentUpdateCoordinator(
+        registry, vectors, graph, processor, chunk_repository=chunks, derived_index=derived_index,
+    )
 
 # 初始化知识图谱和工作流
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """初始化知识图谱和工作流"""
-    global mongo_client, vector_store, memory_service, document_registry, document_coordinator
+    global mongo_client, vector_store, memory_service, document_registry, document_coordinator, chunk_repository, bm25_retriever
     os.makedirs(settings.upload_dir, exist_ok=True)   # 确保上传目录存在
     chat_provider = create_chat_provider(settings)
     embedding_provider = create_embedding_provider(settings)
@@ -101,15 +114,23 @@ async def lifespan(app: FastAPI):
     mongo_client = MongoClient(settings.mongodb_uri)
     document_registry = DocumentRegistry(mongo_client[settings.mongodb_database])
     document_registry.ensure_indexes()
+    chunk_repository = ChunkRepository(mongo_client[settings.mongodb_database])
+    if settings.parent_child_chunk_enabled:
+        chunk_repository.ensure_indexes()
+    bm25_retriever = BM25Retriever(chunk_repository, max_indexed_children=settings.bm25_max_indexed_children)
     document_coordinator = build_document_coordinator(
         document_registry,
         vector_store,
         knowledge_graph,
         chat_provider,
         temp_root=Path(settings.upload_dir) / ".processing",
+        chunks=chunk_repository,
+        derived_index=bm25_retriever,
     )
     app.state.document_registry = document_registry
     app.state.document_coordinator = document_coordinator
+    app.state.chunk_repository = chunk_repository
+    app.state.bm25_retriever = bm25_retriever
     checkpointer = MongoDBSaver(
         client=mongo_client,
         db_name=settings.mongodb_database,
@@ -130,6 +151,10 @@ async def lifespan(app: FastAPI):
         mongo_client.close()
     document_coordinator = None
     app.state.document_coordinator = None
+    chunk_repository = None
+    app.state.chunk_repository = None
+    bm25_retriever = None
+    app.state.bm25_retriever = None
 
 
 app = FastAPI(         # 初始化FastAPI应用

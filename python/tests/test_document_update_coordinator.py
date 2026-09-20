@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from datetime import timedelta
 import hashlib
 
 import httpx
 import pytest
 
-from agents.doc_parser_agent import DocType, DocumentChunk
+from agents.doc_parser_agent import DocType, DocumentChunk, StructuredBlock
 from agents.knowledge_extract_agent import Entity, Relation
+from services.chunk_models import build_parent_child_chunks
 from services.document_registry import utcnow
 from services.document_update_coordinator import (
     DocumentUpdateCoordinator,
@@ -239,6 +241,53 @@ class FakeGraph(FakeVersionStore):
         return self.evidence.get((document_id, version), [])
 
 
+class FakeChunkCatalog(FakeVersionStore):
+    def __init__(self, events):
+        super().__init__("chunk", events)
+        self.counts = {}
+
+    async def stage_version(self, document_id, version, parents, children):
+        await super().stage_document_version(document_id, version)
+        self.counts[(document_id, version)] = len(parents) + len(children)
+        return self.counts[(document_id, version)]
+
+    def count_version(self, document_id, version):
+        return self.counts.get((document_id, version), 0)
+
+    async def activate_version(self, document_id, version):
+        return await super().activate_document_version(document_id, version)
+
+    async def deactivate_version(self, document_id, version):
+        return await super().deactivate_document_version(document_id, version)
+
+    async def delete_version(self, document_id, version):
+        result = await super().delete_document_version(document_id, version)
+        self.counts.pop((document_id, version), None)
+        return result
+
+
+class FakeDerivedIndex:
+    def __init__(self): self.stale_marks = 0
+    def mark_stale(self): self.stale_marks += 1
+
+
+class ParentChildProcessor(FakeProcessor):
+    async def prepare(self, **kwargs):
+        prepared = await super().prepare(**kwargs)
+        bundle = build_parent_child_chunks(
+            [StructuredBlock("甲乙丙丁戊己庚辛壬癸", DocType.TEXT)],
+            document_id=kwargs["document_id"], document_version=kwargs["version"],
+            content_hash=kwargs["content_hash"], source=kwargs["filename"],
+            parent_target_tokens=20, parent_max_tokens=24, child_target_tokens=20, child_overlap_tokens=1,
+        )
+        return replace(
+            prepared,
+            parent_chunks=bundle.parents,
+            child_chunks=bundle.children,
+            chunks=[item.to_document_chunk() for item in bundle.children],
+        )
+
+
 @pytest.fixture
 def setup():
     registry = FakeRegistry()
@@ -258,6 +307,61 @@ async def test_create_success_follows_strict_saga_order(setup):
     assert result["status"] == "succeeded"
     assert events == ["vector.stage", "graph.stage", "vector.activate:1", "graph.activate:1"]
     assert registry.find("doc-1")["current_version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_parent_child_catalog_is_staged_then_activated_before_registry_ready(setup):
+    _, registry, journal, vector, graph, _, events = setup
+    catalog = FakeChunkCatalog(events)
+    derived = FakeDerivedIndex()
+    coordinator = DocumentUpdateCoordinator(registry, vector, graph, ParentChildProcessor(), journal, chunk_repository=catalog, derived_index=derived, lease_seconds=1)
+    result = await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-parent")
+    assert result["status"] == "succeeded"
+    assert events == ["chunk.stage", "vector.stage", "graph.stage", "vector.activate:1", "graph.activate:1", "chunk.activate:1"]
+    assert "chunk_staged" in journal.get("op-parent")["completed_steps"]
+    assert "chunk_activated" in journal.get("op-parent")["completed_steps"]
+    assert derived.stale_marks == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure_store", "failure_action", "expected_compensation"),
+    [
+        ("chunk", "stage", []),
+        ("vector", "stage", ["chunk.delete_version:1"]),
+        ("graph", "stage", ["vector.delete_version:1", "chunk.delete_version:1"]),
+        ("vector", "activate", ["graph.delete_version:1", "vector.delete_version:1", "chunk.delete_version:1"]),
+        ("chunk", "activate", ["graph.deactivate:1", "vector.deactivate:1", "graph.delete_version:1", "vector.delete_version:1", "chunk.delete_version:1"]),
+    ],
+)
+async def test_parent_child_saga_compensates_only_the_exact_new_version(setup, failure_store, failure_action, expected_compensation):
+    _, registry, journal, vector, graph, _, events = setup
+    catalog = FakeChunkCatalog(events)
+    stores = {"chunk": catalog, "vector": vector, "graph": graph}
+    stores[failure_store].fail.add(failure_action)
+    coordinator = DocumentUpdateCoordinator(registry, vector, graph, ParentChildProcessor(), journal, chunk_repository=catalog, lease_seconds=1)
+    with pytest.raises(RuntimeError):
+        await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-parent")
+    assert journal.get("op-parent")["status"] == "failed"
+    for event in expected_compensation:
+        assert event in events
+    assert catalog.count_version("doc-1", 1) == 0
+
+
+@pytest.mark.asyncio
+async def test_parent_child_activation_failure_keeps_the_previous_current_version(setup):
+    _, registry, journal, vector, graph, _, events = setup
+    document_id = registry.seed_current()
+    vector.current[document_id] = graph.current[document_id] = 1
+    catalog = FakeChunkCatalog(events)
+    catalog.current[document_id] = 1
+    catalog.fail.add("activate")
+    coordinator = DocumentUpdateCoordinator(registry, vector, graph, ParentChildProcessor(), journal, chunk_repository=catalog, lease_seconds=1)
+    with pytest.raises(RuntimeError):
+        await coordinator.update_document(document_id, filename="same.txt", content=b"new", operation_id="op-replace")
+    assert vector.current[document_id] == graph.current[document_id] == catalog.current[document_id] == 1
+    assert registry.find(document_id)["current_version"] == 1
+    assert catalog.count_version(document_id, 2) == 0
 
 
 @pytest.mark.asyncio

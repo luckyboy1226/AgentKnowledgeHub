@@ -20,8 +20,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
-from agents.doc_parser_agent import DocType, DocumentChunk
+from agents.doc_parser_agent import DocType, DocumentChunk, StructuredBlock
 from agents.knowledge_extract_agent import Entity, ExtractionResult, Relation
+from services.chunk_models import ChildChunk, ParentChunk, build_parent_child_chunks
 from services.document_update_coordinator import PreparedDocument
 from services.processing_errors import classify_safe_processing_error
 
@@ -120,6 +121,11 @@ class DocumentProcessorAdapter:
         max_entities: int = 20_000,
         max_relations: int = 20_000,
         audit_sink: AuditSink | None = None,
+        parent_child_enabled: bool = False,
+        parent_target_tokens: int = 1000,
+        parent_max_tokens: int = 1400,
+        child_target_tokens: int = 250,
+        child_overlap_tokens: int = 50,
     ) -> None:
         if min(max_chunks, max_entities, max_relations) < 1:
             raise ValueError("Document processor limits must be positive")
@@ -130,6 +136,15 @@ class DocumentProcessorAdapter:
         self.max_entities = max_entities
         self.max_relations = max_relations
         self.audit_sink = audit_sink
+        self.parent_child_enabled = bool(parent_child_enabled)
+        self.parent_target_tokens = int(parent_target_tokens)
+        self.parent_max_tokens = int(parent_max_tokens)
+        self.child_target_tokens = int(child_target_tokens)
+        self.child_overlap_tokens = int(child_overlap_tokens)
+        if self.parent_target_tokens > self.parent_max_tokens:
+            raise ValueError("parent target cannot exceed parent maximum")
+        if self.child_overlap_tokens < 0 or self.child_overlap_tokens >= self.child_target_tokens:
+            raise ValueError("child overlap must be smaller than child target")
 
     async def prepare(
         self,
@@ -150,7 +165,42 @@ class DocumentProcessorAdapter:
         try:
             parse_started = time.monotonic()
             try:
-                parsed_chunks = await self.parser.parse(str(temp_path))
+                parent_chunks: list[ParentChunk] = []
+                child_chunks: list[ChildChunk] = []
+                if self.parent_child_enabled:
+                    structured = getattr(self.parser, "parse_structured", None)
+                    if callable(structured):
+                        blocks = await structured(str(temp_path))
+                    else:
+                        parsed = await self.parser.parse(str(temp_path))
+                        blocks = [
+                            StructuredBlock(
+                                chunk.content,
+                                chunk.doc_type,
+                                section_title=(chunk.metadata or {}).get("section_title"),
+                                page_number=(chunk.metadata or {}).get("page_number"),
+                                table_id=(chunk.metadata or {}).get("table_id"),
+                                metadata=dict(chunk.metadata or {}),
+                            )
+                            for chunk in parsed
+                        ]
+                    blocks = self._normalize_structured_blocks(blocks)
+                    bundle = build_parent_child_chunks(
+                        blocks,
+                        document_id=document_id,
+                        document_version=version,
+                        content_hash=content_hash,
+                        source=source,
+                        parent_target_tokens=self.parent_target_tokens,
+                        parent_max_tokens=self.parent_max_tokens,
+                        child_target_tokens=self.child_target_tokens,
+                        child_overlap_tokens=self.child_overlap_tokens,
+                    )
+                    parent_chunks = bundle.parents
+                    child_chunks = bundle.children
+                    parsed_chunks = [child.to_document_chunk() for child in child_chunks]
+                else:
+                    parsed_chunks = await self.parser.parse(str(temp_path))
             except asyncio.TimeoutError as exc:
                 self._audit(
                     operation_id, "parse", success=False,
@@ -221,6 +271,8 @@ class DocumentProcessorAdapter:
             )
             return PreparedDocument(
                 chunks=chunks,
+                parent_chunks=parent_chunks,
+                child_chunks=child_chunks,
                 entities=entities,
                 relations=relations,
                 document_id=document_id,
@@ -232,6 +284,8 @@ class DocumentProcessorAdapter:
                     "parse_elapsed_ms": parse_elapsed_ms,
                     "extraction_elapsed_ms": extract_elapsed_ms,
                     "chunk_count": len(chunks),
+                    "parent_chunk_count": len(parent_chunks),
+                    "parent_child_enabled": self.parent_child_enabled,
                     "entity_count": len(entities),
                     "relation_count": len(relations),
                     "dropped_relation_count": dropped_relation_count,
@@ -321,6 +375,26 @@ class DocumentProcessorAdapter:
             normalized.append(
                 DocumentChunk(text, document_id, index, chunk_type, metadata, embedding=None)
             )
+        return normalized
+
+    @staticmethod
+    def _normalize_structured_blocks(blocks: list[StructuredBlock]) -> list[StructuredBlock]:
+        """Keep catalog metadata subject to the same safe JSON contract as children."""
+        normalized: list[StructuredBlock] = []
+        for block in blocks:
+            if not isinstance(block, StructuredBlock):
+                raise InvalidExtractionResult("Parser structured block is invalid")
+            metadata = _json_safe(block.metadata or {})
+            if not isinstance(metadata, dict):
+                raise InvalidExtractionResult("Structured block metadata must be an object")
+            json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+            normalized.append(StructuredBlock(
+                content=str(block.content or ""), doc_type=block.doc_type,
+                section_title=str(block.section_title)[:500] if block.section_title else None,
+                page_number=int(block.page_number) if block.page_number is not None else None,
+                table_id=str(block.table_id)[:120] if block.table_id else None,
+                metadata=metadata,
+            ))
         return normalized
 
     def _normalize_extraction(

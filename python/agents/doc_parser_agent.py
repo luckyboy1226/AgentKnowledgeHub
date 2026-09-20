@@ -44,6 +44,18 @@ class DocumentChunk:
         return f"{self.doc_id}#chunk-{self.chunk_index}"
 
 
+@dataclass(frozen=True)
+class StructuredBlock:
+    """A parser-produced deterministic structural unit for feature-gated ingestion."""
+
+    content: str
+    doc_type: DocType
+    section_title: str | None = None
+    page_number: int | None = None
+    table_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 class DocParserAgent:
     """
     文档解析 Agent
@@ -91,6 +103,32 @@ class DocParserAgent:
 
         chunks = self._chunk_texts(raw_texts, doc_id, doc_type, file_path)
         return chunks
+
+    async def parse_structured(self, file_path: str) -> list[StructuredBlock]:
+        """Return deterministic structural blocks for Parent–Child ingestion.
+
+        This is intentionally a separate API from :meth:`parse`: the legacy
+        parser and current online ingestion remain byte-for-byte compatible
+        while the feature-gated processor can preserve headings, PDF pages and
+        bounded table row groups.
+        """
+        doc_type = self._classify(file_path)
+        if doc_type == DocType.PDF:
+            raw_texts = await self._parse_pdf(file_path)
+            return [StructuredBlock(text, doc_type, page_number=index + 1) for index, text in enumerate(raw_texts) if text.strip()]
+        if doc_type == DocType.IMAGE:
+            raw_texts = await self._parse_image(file_path)
+        elif doc_type == DocType.TABLE:
+            raw_texts = await self._parse_table(file_path)
+        else:
+            raw_texts = self._parse_text(file_path)
+        if doc_type == DocType.MARKDOWN:
+            return self._markdown_blocks(raw_texts[0] if raw_texts else "", doc_type)
+        if doc_type == DocType.TEXT:
+            return self._text_blocks(raw_texts[0] if raw_texts else "", doc_type)
+        if doc_type == DocType.TABLE:
+            return [StructuredBlock(text, doc_type, table_id=f"table-{index}") for index, text in enumerate(raw_texts) if text.strip()]
+        return [StructuredBlock(text, doc_type) for text in raw_texts if text.strip()]
 
     async def parse_batch(self, file_paths: list[str]) -> list[DocumentChunk]:
         """批量解析多个文件"""
@@ -249,6 +287,37 @@ class DocParserAgent:
     def _parse_text(file_path: str) -> list[str]:
         with open(file_path, encoding="utf-8") as f:
             return [f.read()]
+
+    @staticmethod
+    def _text_blocks(text: str, doc_type: DocType) -> list[StructuredBlock]:
+        # Keep one structural text block here. The Parent–Child builder then
+        # groups complete paragraphs up to its target/max bounds, rather than
+        # making every short paragraph an undersized parent.
+        normalized = text.replace("\r\n", "\n").strip()
+        return [StructuredBlock(normalized, doc_type)] if normalized else []
+
+    @staticmethod
+    def _markdown_blocks(text: str, doc_type: DocType) -> list[StructuredBlock]:
+        """Split only on markdown headings; content remains otherwise intact."""
+        blocks: list[StructuredBlock] = []
+        current_title: str | None = None
+        current_lines: list[str] = []
+        for line in text.replace("\r\n", "\n").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                hashes = len(stripped) - len(stripped.lstrip("#"))
+                if hashes and len(stripped) > hashes and stripped[hashes:hashes + 1].isspace():
+                    if "\n".join(current_lines).strip():
+                        blocks.append(StructuredBlock("\n".join(current_lines).strip(), doc_type, section_title=current_title))
+                    current_title = stripped[hashes:].strip()
+                    current_lines = []
+                    continue
+            current_lines.append(line)
+        if "\n".join(current_lines).strip() or current_title:
+            content = "\n".join(current_lines).strip()
+            if content:
+                blocks.append(StructuredBlock(content, doc_type, section_title=current_title))
+        return blocks or [StructuredBlock(text.strip(), doc_type)]
 
     # ── chunking ─────────────────────────────────────────────
 

@@ -244,6 +244,19 @@ class VectorStoreService:
                     "status": "processing",
                     "doc_type": str(chunk.doc_type.value),
                 }
+                # Parent–Child ingestion is feature-gated upstream. These
+                # optional scalar fields preserve the exact child provenance
+                # without putting parent content into Chroma.
+                for key in (
+                    "parent_chunk_id",
+                    "section_title",
+                    "page_number",
+                    "table_id",
+                    "estimated_token_count",
+                ):
+                    value = (chunk.metadata or {}).get(key)
+                    if value is not None and value != "":
+                        metadata[key] = self.scalar_metadata(value)
                 self._store.upsert(
                     ids=[vector_id],
                     embeddings=[vector],

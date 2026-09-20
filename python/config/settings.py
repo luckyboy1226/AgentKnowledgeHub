@@ -52,6 +52,28 @@ class Settings(BaseSettings):
     extraction_max_attempts: int = Field(default=2, ge=1, le=3)
     extraction_retry_backoff_seconds: float = Field(default=1, ge=0, le=5)
 
+    # Parent–Child ingestion is deliberately opt-in. Retrieval remains on the
+    # existing V1 path throughout Phase A, regardless of this setting.
+    parent_child_chunk_enabled: bool = False
+    parent_target_tokens: int = Field(default=1000, ge=1, le=10_000)
+    parent_max_tokens: int = Field(default=1400, ge=1, le=20_000)
+    child_target_tokens: int = Field(default=250, ge=1, le=5_000)
+    child_overlap_tokens: int = Field(default=50, ge=0, le=2_500)
+
+    # Retrieval V2 is isolated from the established QA path until later
+    # phases explicitly opt in. BM25 is a derived, in-process child index.
+    hybrid_retrieval_v2_enabled: bool = False
+    bm25_enabled: bool = False
+    bm25_top_k: int = Field(default=20, ge=1, le=200)
+    vector_v2_top_k: int = Field(default=20, ge=1, le=200)
+    graph_v2_top_k: int = Field(default=20, ge=1, le=200)
+    bm25_max_indexed_children: int = Field(default=50_000, ge=1, le=1_000_000)
+    # RRF is an internal V2 building block only. The public V1 QA route does
+    # not consume it until a later, explicitly authorized phase.
+    rrf_enabled: bool = True
+    rrf_k: int = Field(default=60, ge=1, le=10_000)
+    rrf_fusion_top_k: int = Field(default=30, ge=1, le=500)
+
     # Explicit provider configuration. Empty values deliberately fall back to
     # the legacy variables above, keeping existing local .env files functional.
     chat_provider: str = ""
@@ -150,6 +172,10 @@ class Settings(BaseSettings):
             raise ValueError("EXTRACTION_CHUNK_DEADLINE_SECONDS must cover one extraction request")
         if self.document_processing_timeout_seconds < self.extraction_chunk_deadline_seconds:
             raise ValueError("DOCUMENT_PROCESSING_TIMEOUT_SECONDS must cover one chunk deadline")
+        if self.parent_target_tokens > self.parent_max_tokens:
+            raise ValueError("PARENT_TARGET_TOKENS cannot exceed PARENT_MAX_TOKENS")
+        if self.child_overlap_tokens >= self.child_target_tokens:
+            raise ValueError("CHILD_OVERLAP_TOKENS must be smaller than CHILD_TARGET_TOKENS")
         return self
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

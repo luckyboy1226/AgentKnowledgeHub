@@ -174,6 +174,20 @@ async def test_stage_metadata_is_scalar_and_source_is_safe(vector_store):
 
 
 @pytest.mark.asyncio
+async def test_parent_child_metadata_is_preserved_on_child_vectors_only(vector_store):
+    parent_id = "document-a:v1:p0"
+    staged = [DocumentChunk("child", "legacy", 0, DocType.TEXT, {
+        "source": "safe.txt", "parent_chunk_id": parent_id, "section_title": "标题",
+        "page_number": 2, "table_id": "table-0", "estimated_token_count": 12,
+    })]
+    await vector_store.stage_document_version("document-a", 1, staged, "hash-1")
+    metadata = vector_store._store.rows["document-a:v1:c0"]["metadata"]
+    assert metadata["parent_chunk_id"] == parent_id
+    assert metadata["estimated_token_count"] == 12
+    assert all(":p0" not in vector_id for vector_id in vector_store._store.rows)
+
+
+@pytest.mark.asyncio
 async def test_stage_defaults_to_processing_and_not_current(vector_store):
     await vector_store.stage_document_version("document-a", 1, chunks(), "hash-1")
     assert all(not row["metadata"]["is_current"] for row in vector_store._store.rows.values())

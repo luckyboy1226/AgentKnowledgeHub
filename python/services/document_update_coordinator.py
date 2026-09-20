@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from agents.doc_parser_agent import DocumentChunk
 from agents.knowledge_extract_agent import Entity, Relation
+from services.chunk_models import ChildChunk, ParentChunk
 from services.document_registry import RegistryError, safe_error, safe_key, utcnow
 from services.processing_errors import classify_safe_processing_error
 
@@ -43,6 +44,10 @@ class PreparedDocument:
     """Prepared values only live in memory and are deliberately never journaled."""
 
     chunks: list[DocumentChunk] = field(default_factory=list)
+    # V1 leaves both lists empty. V2 ingestion retains DocumentChunk as the
+    # established vector/KG input while catalog records hold parent context.
+    parent_chunks: list[ParentChunk] = field(default_factory=list)
+    child_chunks: list[ChildChunk] = field(default_factory=list)
     entities: list[Entity] = field(default_factory=list)
     relations: list[Relation] = field(default_factory=list)
     document_id: str = ""
@@ -160,6 +165,8 @@ class DocumentUpdateCoordinator:
         processor: DocumentProcessor,
         journal: OperationJournal | Any | None = None,
         *,
+        chunk_repository: Any | None = None,
+        derived_index: Any | None = None,
         lease_seconds: int = 300,
     ) -> None:
         self.registry = registry
@@ -167,7 +174,24 @@ class DocumentUpdateCoordinator:
         self.knowledge_graph = knowledge_graph
         self.processor = processor
         self.journal = journal or OperationJournal(registry.operations, registry.operation_locks)
+        self.chunk_repository = chunk_repository
+        self.derived_index = derived_index
         self.lease_seconds = lease_seconds
+
+    def _has_chunk_catalog_version(self, document_id: str, version: int) -> bool:
+        """Keep V1 delete behavior untouched when no Parent–Child rows exist."""
+        if self.chunk_repository is None:
+            return False
+        return bool(self.chunk_repository.count_version(document_id, int(version)))
+
+    def _mark_derived_index_stale(self) -> None:
+        """Derived-index notification must never affect the durable Saga."""
+        callback = getattr(self.derived_index, "mark_stale", None)
+        if callable(callback):
+            try:
+                callback()
+            except Exception:
+                pass
 
     @staticmethod
     def _operation_record(
@@ -421,6 +445,23 @@ class DocumentUpdateCoordinator:
                 processing_metadata=dict(prepared.processing_metadata),
             )
 
+            if prepared.parent_chunks or prepared.child_chunks:
+                if self.chunk_repository is None:
+                    raise RuntimeError("Parent–Child chunks require a chunk catalog")
+                if not prepared.parent_chunks or not prepared.child_chunks:
+                    raise RuntimeError("Parent–Child artifact is incomplete")
+                await self.chunk_repository.stage_version(
+                    document_id, version, prepared.parent_chunks, prepared.child_chunks
+                )
+                expected_chunk_records = len(prepared.parent_chunks) + len(prepared.child_chunks)
+                if self.chunk_repository.count_version(document_id, version) != expected_chunk_records:
+                    raise RuntimeError("Chunk catalog stage count does not match prepared chunks")
+                self.journal.complete_step(
+                    operation_id,
+                    "chunk_staged",
+                    chunk_catalog_count=expected_chunk_records,
+                )
+
             await self.vector_store.stage_document_version(
                 document_id,
                 version,
@@ -457,6 +498,10 @@ class DocumentUpdateCoordinator:
             self.journal.complete_step(operation_id, "vector_activated")
             await self.knowledge_graph.activate_document_version(document_id, version)
             self.journal.complete_step(operation_id, "graph_activated")
+            if prepared.parent_chunks or prepared.child_chunks:
+                await self.chunk_repository.activate_version(document_id, version)
+                self.journal.complete_step(operation_id, "chunk_activated")
+                self._mark_derived_index_stale()
             self.registry.transition(
                 document_id, version, "ready", chunk_count=len(prepared.chunks)
             )
@@ -505,6 +550,8 @@ class DocumentUpdateCoordinator:
             except Exception as exc:  # preserve original business error outside this routine
                 failures.append(exc)
 
+        if "chunk_activated" in completed and self.chunk_repository is not None:
+            await compensate("chunk_deactivated", lambda: self.chunk_repository.deactivate_version(document_id, version))
         if "graph_activated" in completed:
             await compensate("graph_deactivated", lambda: self.knowledge_graph.deactivate_document_version(document_id, version))
         if "vector_activated" in completed:
@@ -513,10 +560,14 @@ class DocumentUpdateCoordinator:
             await compensate("graph_stage_deleted", lambda: self.knowledge_graph.delete_document_version(document_id, version))
         if "vector_staged" in completed:
             await compensate("vector_stage_deleted", lambda: self.vector_store.delete_document_version(document_id, version))
+        if "chunk_staged" in completed and self.chunk_repository is not None:
+            await compensate("chunk_stage_deleted", lambda: self.chunk_repository.delete_version(document_id, version))
         if previous is not None and "vector_activated" in completed:
             await compensate("previous_vector_restored", lambda: self.vector_store.activate_document_version(document_id, previous))
         if previous is not None and "graph_activated" in completed:
             await compensate("previous_graph_restored", lambda: self.knowledge_graph.activate_document_version(document_id, previous))
+        if previous is not None and "chunk_activated" in completed and self.chunk_repository is not None:
+            await compensate("previous_chunk_restored", lambda: self.chunk_repository.activate_version(document_id, previous))
 
         if failures:
             self.journal.update(
@@ -578,6 +629,9 @@ class DocumentUpdateCoordinator:
             self.journal.complete_step(operation_id, "vector_deactivated")
             await self.knowledge_graph.deactivate_document_version(document_id, version)
             self.journal.complete_step(operation_id, "graph_deactivated")
+            if self._has_chunk_catalog_version(document_id, version):
+                await self.chunk_repository.deactivate_version(document_id, version)
+                self.journal.complete_step(operation_id, "chunk_deactivated")
             self.registry.mark_deleted(document_id, version)
             self.journal.complete_step(operation_id, "mongo_deleted")
             try:
@@ -585,6 +639,10 @@ class DocumentUpdateCoordinator:
                 self.journal.complete_step(operation_id, "vector_cleaned")
                 await self.knowledge_graph.delete_document(document_id)
                 self.journal.complete_step(operation_id, "graph_cleaned")
+                if self._has_chunk_catalog_version(document_id, version):
+                    await self.chunk_repository.delete_document(document_id)
+                    self.journal.complete_step(operation_id, "chunk_cleaned")
+                    self._mark_derived_index_stale()
             except Exception as cleanup_error:
                 return self.journal.update(
                     operation_id,
@@ -611,6 +669,10 @@ class DocumentUpdateCoordinator:
                     self.journal.complete_step(operation_id, "vector_cleaned")
                     await self.knowledge_graph.delete_document(document_id)
                     self.journal.complete_step(operation_id, "graph_cleaned")
+                    if self._has_chunk_catalog_version(document_id, int(operation.get("version") or 0)):
+                        await self.chunk_repository.delete_document(document_id)
+                        self.journal.complete_step(operation_id, "chunk_cleaned")
+                        self._mark_derived_index_stale()
                     return self.journal.update(operation_id, status="succeeded", error_summary=None)
                 except Exception as error:
                     return self.journal.update(
