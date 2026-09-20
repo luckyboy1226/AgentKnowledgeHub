@@ -914,7 +914,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--question-ids", metavar="IDS", help="comma-separated reviewed fixture question IDs")
     parser.add_argument("--s4-baseline", action="store_true", help="use the historic built-in 4-document S4 fixture")
     parser.add_argument("--run-id")
+    parser.add_argument("--v2-fake", action="store_true", help="run Phase F deterministic fake-only variants")
+    parser.add_argument("--variants", help="comma-separated Phase F variants")
+    parser.add_argument("--final-top-k", type=int, default=8, help="Phase F final context K")
+    parser.add_argument("--v2-retrieval-trace", action="store_true", help="write Phase F ID-only retrieval diagnostics")
+    parser.add_argument("--v2-graph-trace", action="store_true", help="write Phase F graph-only diagnostics")
     args = parser.parse_args(argv)
+    if args.v2_fake:
+        forbidden = args.real or args.authorized_s4 or args.recover_run or args.cleanup_run or args.rescore or args.benchmark_dir or args.document_ids or args.question_ids or args.s4_baseline
+        if forbidden:
+            parser.error("--v2-fake is offline-only and cannot be combined with real/S4 options")
+        from services.hybrid_retrieval_v2_evaluation import VARIANTS, run_fake_evaluation
+        variants = tuple(part.strip() for part in (args.variants or ",".join(VARIANTS)).split(",") if part.strip())
+        run_id = args.run_id or f"phase-f-fake-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+        try:
+            run_fake_evaluation(PROJECT_ROOT / ".runtime" / "evaluation", run_id, variants, args.final_top_k,
+                                retrieval_trace=args.v2_retrieval_trace, graph_trace=args.v2_graph_trace)
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Phase F fake evaluation failed safely: {_safe_error(exc)}", file=sys.stderr)
+            return 1
+        print(f"Phase F fake-only evaluation completed: {PROJECT_ROOT / '.runtime' / 'evaluation' / run_id}")
+        return 0
     if args.rescore:
         if args.offline or args.real or args.authorized_s4 or args.run_id or args.benchmark_dir or args.document_ids or args.question_ids or args.s4_baseline or args.recover_run or args.cleanup_run:
             parser.error("--rescore cannot be combined with evaluation execution options")

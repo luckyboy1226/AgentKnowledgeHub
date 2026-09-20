@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     retrieval_trace_ttl_seconds: int = Field(default=1800, ge=1, le=86_400)
     retrieval_trace_max_candidates_per_stage: int = Field(default=50, ge=1, le=500)
 
+    # Phase F remains an offline runner only.  These flags never participate
+    # in the production QA import path or authorize a provider call.
+    eval_v2_enabled: bool = False
+    eval_variants: str = "vector_only,bm25_vector_rrf,vector_graph_rrf,hybrid_v2_full"
+    eval_final_top_k: int = Field(default=8, ge=1, le=100)
+    eval_retrieval_trace_enabled: bool = False
+    eval_graph_trace_enabled: bool = False
+
     # Explicit provider configuration. Empty values deliberately fall back to
     # the legacy variables above, keeping existing local .env files functional.
     chat_provider: str = ""

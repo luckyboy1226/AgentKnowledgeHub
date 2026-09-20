@@ -8,8 +8,20 @@ Phase B introduces a deterministic BM25 derived index and a common
 + current heuristic rerank + Top-K + LLM.
 
 `HYBRID_RETRIEVAL_V2_ENABLED=false` and `BM25_ENABLED=false` are the defaults.
-The V2 services are internal building blocks; they are not an API query switch,
-reranker, Parent Expansion, retrieval trace, or A/B evaluation implementation.
+
+## Phase F — Offline A/B evaluation
+
+Phase F adds a fake-only deterministic evaluation harness; it is not connected to
+the online QA route. Its four variants are Vector-only, BM25+Vector RRF,
+Vector+Graph RRF, and full Hybrid V2. Each variant must share one query plan and
+one verified allowlisted scope. Graph metrics are explicitly N/A (`null`) for
+non-graph variants, disabled stages have null latency, and failure buckets are only
+assigned where retrieval evidence supports them. See
+`HYBRID_RETRIEVAL_V2_EVALUATION.md` for metric formulas, output schema, and the
+real-run authorization boundary. Defaults remain `EVAL_V2_ENABLED=false` and no
+evaluation import performs provider, DB, trace-store, or background work.
+The V2 services remain internal building blocks rather than an API query switch;
+Phase F's evaluation harness is separately offline-only and fake-only.
 
 ## Responsibilities
 
