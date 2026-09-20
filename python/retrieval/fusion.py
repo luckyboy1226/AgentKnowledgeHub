@@ -194,12 +194,7 @@ class RRFFusion:
                 metadata=metadata,
             ))
 
-        fused.sort(key=lambda item: (
-            -item.rrf_score,
-            -len(item.retrieval_types),
-            min(item.source_ranks.values()),
-            item.candidate_id,
-        ))
+        fused.sort(key=rrf_sort_key)
         output = tuple(fused[:effective_top_k])
         diagnostics = RRFFusionDiagnostics(
             input_counts=input_counts,
@@ -219,3 +214,13 @@ class RRFFusion:
             "output_count": diagnostics.output_count,
         }, latency_ms=(time.monotonic() - started) * 1000)
         return result
+
+
+def rrf_sort_key(item: FusedCandidate) -> tuple[float, int, int, str]:
+    """Complete deterministic RRF ordering key, exposed for contract tests."""
+    return (
+            -item.rrf_score,
+            -len(item.retrieval_types),
+            min(item.source_ranks.values()),
+            item.candidate_id,
+    )

@@ -11,6 +11,7 @@ from uuid import UUID
 from agents.doc_parser_agent import DocumentChunk
 from config import settings
 from providers.embeddings import EmbeddingProvider, EmbeddingProviderError
+from retrieval.candidates import child_candidate_id
 
 
 class VectorStoreService:
@@ -46,6 +47,17 @@ class VectorStoreService:
             "embedding_space_id": self.embedding_space_id,
             "schema_version": 1,
         }
+
+    @staticmethod
+    def _stable_search_order(record: dict[str, Any], score: float) -> tuple[float, str]:
+        """Order equal-score vector results before V2 assigns source ranks.
+
+        Chroma does not promise an order among equal distances.  The durable
+        child candidate identity is therefore the tie-breaker; it does not
+        inspect or truncate content and is stable across processes.
+        """
+        metadata = dict(record.get("metadata") or {})
+        return (-float(score), child_candidate_id(metadata, str(record.get("content") or "")))
 
     def _validate_collection_identity(self, metadata: dict[str, Any] | None) -> None:
         metadata = dict(metadata or {})
@@ -414,19 +426,13 @@ class VectorStoreService:
                         )
                     continue
                 metadata["source"] = self.safe_source(metadata.get("source", ""))
-                out.append(
-                    (
-                        {
-                            "content": doc,
-                            "source": metadata["source"],
-                            "metadata": metadata,
-                        },
-                        1.0 - distance,
-                    )
-                )
-                if len(out) == top_k:
-                    break
-            return out
+                out.append(({
+                    "content": doc,
+                    "source": metadata["source"],
+                    "metadata": metadata,
+                }, 1.0 - float(distance)))
+            out.sort(key=lambda item: self._stable_search_order(item[0], item[1]))
+            return out[:int(top_k)]
 
         results = await self._store.asimilarity_search_with_score(query, k=top_k)
         output = [
