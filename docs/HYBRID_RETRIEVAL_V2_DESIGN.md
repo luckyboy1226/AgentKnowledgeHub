@@ -103,6 +103,14 @@ unscoped vector or graph query.
 | `RRF_ENABLED` | `true` (internal only) |
 | `RRF_K` | `60` |
 | `RRF_FUSION_TOP_K` | `30` |
+| `RERANK_ENABLED` | `false` |
+| `RERANK_INPUT_TOP_K` | `30` |
+| `RERANK_OUTPUT_TOP_K` | `12` |
+| `RERANK_TIMEOUT_SECONDS` | `10` |
+| `RERANK_MAX_ATTEMPTS` | `2` |
+| `PARENT_EXPANSION_ENABLED` | `false` |
+| `FINAL_CONTEXT_TOP_K` | `8` |
+| `FINAL_CONTEXT_TOKEN_BUDGET` | `6000` estimated tokens |
 
 This design targets a small-to-medium single-instance knowledge base. It does
 not claim million-document search capacity; future scale work can evaluate a
@@ -113,3 +121,59 @@ dedicated search service without changing the catalog truth model.
 Phase C implements RRF only through the internal service, without changing V1
 defaults. Later phases may feed its Top-30 into reranking, bounded Parent
 Expansion, safe Retrieval Trace, and controlled offline A/B evaluation.
+
+## Phase D: rerank, parent expansion, and final context budget
+
+Phase D completes an internal-only context builder:
+
+`RRF Top-30 -> rerank Top-12 -> Child-to-Parent expansion -> complete-unit budget -> FinalContext Top-8`.
+
+Recall remains responsible for finding candidates; reranking only reorders the
+already fused RRF pool. `Reranker` is a provider-neutral protocol. The
+default `DisabledReranker` preserves RRF order, and `FakeReranker` is used only
+by deterministic tests. `ConfigurableModelReranker` accepts an injected
+provider protocol, uses `RERANK_TIMEOUT_SECONDS` and bounded
+`RERANK_MAX_ATTEMPTS`, and strictly validates that the returned candidate IDs
+are exactly the supplied set with finite scores. Timeout, provider failure, or
+malformed responses safely fall back to RRF order with a reason code; they do
+not make retrieval unavailable. No BGE model, endpoint, package, or GPU runtime
+is bundled or claimed to be in use.
+
+Reranking uses the normalized query already produced by a shared plan. It does
+not rewrite the query. Child content is sent once per fused ID. Graph evidence
+is rendered as stable directed triples with `subject`, exact `predicate`,
+`object`, and `direction`; it is never a Python dictionary string and cannot
+silently turn `PROVIDES_INDEX` into `DEPENDS_ON`. Successful rerank sorting is
+`rerank_score desc`, `rrf_score desc`, `pre_rerank_rank asc`, then candidate ID.
+RRF and rerank scores are retained separately and are never manually blended.
+
+Parent expansion happens **after** reranking and only for a child with an exact
+`(document_id, document_version, parent_chunk_id)`. The catalog parent must be
+`kind=parent`, `status=ready`, and `is_current=true`; historical versions are
+never used. Multiple children that hit the same parent produce one parent
+context retaining all supporting child/candidate IDs and the best rerank rank.
+Missing parents and legacy children without `parent_chunk_id` become a child
+fallback; no parent is guessed from filename, index, text proximity, or source.
+Graph candidates never expand to a parent and remain independent graph evidence
+contexts.
+
+`FinalContext` is the common V2 output, with safe source/document/version
+provenance, supporting IDs, retrieval types, RRF/rerank scores, deterministic
+rank, and an `estimated_token_count`. Parent contexts dedupe by exact
+document/version/parent ID, child fallbacks by chunk ID, and graph evidence by
+its evidence identity. A restricted allowlist remains fail-closed throughout;
+an empty scope returns no contexts and an out-of-scope parent or graph candidate
+cannot become an unscoped fallback.
+
+The complete-unit budget uses estimates rather than claiming model tokenizer
+tokens. It selects ranked contexts up to `FINAL_CONTEXT_TOP_K=8` and
+`FINAL_CONTEXT_TOKEN_BUDGET=6000`. It never slices parent text. If a parent
+does not fit but its best supporting child fits, that child is substituted;
+otherwise the candidate is dropped. Graph evidence is budgeted like every other
+context. Safe diagnostics record rerank, parent expansion, graph, and budget
+counts only—never queries, prompts, full content, credentials, or paths.
+
+`ContextBuilderV2` is not imported by `QAAgent` or the public API. Defaults
+remain `HYBRID_RETRIEVAL_V2_ENABLED=false`, `RERANK_ENABLED=false`, and
+`PARENT_EXPANSION_ENABLED=false`; ordinary `/api/qa/ask` remains the V1
+vector-plus-graph heuristic path.

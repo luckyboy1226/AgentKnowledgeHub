@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     rrf_enabled: bool = True
     rrf_k: int = Field(default=60, ge=1, le=10_000)
     rrf_fusion_top_k: int = Field(default=30, ge=1, le=500)
+    # Phase D stays fully internal to Retrieval V2. No default QA path reads
+    # these flags until a later phase explicitly wires an opt-in caller.
+    rerank_enabled: bool = False
+    rerank_input_top_k: int = Field(default=30, ge=1, le=500)
+    rerank_output_top_k: int = Field(default=12, ge=1, le=500)
+    rerank_timeout_seconds: float = Field(default=10, gt=0, le=120)
+    rerank_max_attempts: int = Field(default=2, ge=1, le=3)
+    parent_expansion_enabled: bool = False
+    final_context_top_k: int = Field(default=8, ge=1, le=100)
+    final_context_token_budget: int = Field(default=6000, ge=1, le=100_000)
 
     # Explicit provider configuration. Empty values deliberately fall back to
     # the legacy variables above, keeping existing local .env files functional.
@@ -176,6 +186,8 @@ class Settings(BaseSettings):
             raise ValueError("PARENT_TARGET_TOKENS cannot exceed PARENT_MAX_TOKENS")
         if self.child_overlap_tokens >= self.child_target_tokens:
             raise ValueError("CHILD_OVERLAP_TOKENS must be smaller than CHILD_TARGET_TOKENS")
+        if self.rerank_output_top_k > self.rerank_input_top_k:
+            raise ValueError("RERANK_OUTPUT_TOP_K cannot exceed RERANK_INPUT_TOP_K")
         return self
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
