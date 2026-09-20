@@ -7,9 +7,11 @@ not retrieve, expand parents, rerank, or generate an answer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 from typing import Any
 
 from retrieval.candidates import RetrievalCandidate, RetrievalType, safe_source
+from retrieval.trace_support import emit
 
 
 _RETRIEVAL_TYPES: tuple[RetrievalType, ...] = ("bm25", "vector", "graph")
@@ -98,8 +100,11 @@ class RRFFusion:
         self,
         retrieval_results: dict[str, list[RetrievalCandidate]],
         top_k: int | None = None,
+        *,
+        trace: Any | None = None,
     ) -> RRFFusionResult:
         """Fuse supplied rank lists without comparing raw score spaces."""
+        started = time.monotonic()
         effective_top_k = self.fusion_top_k if top_k is None else int(top_k)
         if effective_top_k < 1:
             raise ValueError("top_k must be positive")
@@ -204,4 +209,13 @@ class RRFFusion:
             provenance_conflict_count=conflict_count,
             output_count=len(output),
         )
-        return RRFFusionResult(candidates=output, diagnostics=diagnostics)
+        result = RRFFusionResult(candidates=output, diagnostics=diagnostics)
+        emit(trace, "record_stage", "rrf_fused", candidates=output, details={
+            "input_counts": diagnostics.input_counts,
+            "unique_candidate_count": diagnostics.unique_candidate_count,
+            "multi_source_candidate_count": diagnostics.multi_source_candidate_count,
+            "invalid_candidate_count": diagnostics.invalid_candidate_count,
+            "provenance_conflict_count": diagnostics.provenance_conflict_count,
+            "output_count": diagnostics.output_count,
+        }, latency_ms=(time.monotonic() - started) * 1000)
+        return result

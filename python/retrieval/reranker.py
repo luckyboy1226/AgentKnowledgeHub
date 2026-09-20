@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from retrieval.fusion import FusedCandidate
+from retrieval.trace_support import emit
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,7 @@ class RerankScore:
 
 class Reranker(Protocol):
     async def rerank(
-        self, query: str, candidates: list[FusedCandidate], top_k: int
+        self, query: str, candidates: list[FusedCandidate], top_k: int, *, trace: Any | None = None
     ) -> RerankResult: ...
 
 
@@ -92,6 +94,10 @@ class RerankerUnavailableError(RerankerError):
 
 
 class RerankerMalformedResponse(RerankerError):
+    pass
+
+
+class RerankerCandidateMismatch(RerankerMalformedResponse):
     pass
 
 
@@ -157,7 +163,7 @@ def _fallback_result(candidates: list[FusedCandidate], top_k: int, reason: str |
 def _rank_with_scores(candidates: list[FusedCandidate], scores: dict[str, float], top_k: int) -> RerankResult:
     expected = {candidate.candidate_id for candidate in candidates}
     if set(scores) != expected or len(scores) != len(candidates):
-        raise RerankerMalformedResponse("candidate identity mismatch")
+        raise RerankerCandidateMismatch("candidate identity mismatch")
     if any(not math.isfinite(score) for score in scores.values()):
         raise RerankerMalformedResponse("non-finite rerank score")
     indexed = list(enumerate(candidates, start=1))
@@ -185,9 +191,17 @@ def _rank_with_scores(candidates: list[FusedCandidate], scores: dict[str, float]
 class DisabledReranker:
     """Explicitly preserve RRF ordering when reranking is off or unavailable."""
 
-    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int) -> RerankResult:
+    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int, *, trace: Any | None = None) -> RerankResult:
         del query
-        return _fallback_result(candidates, top_k, "disabled")
+        started = time.monotonic()
+        emit(trace, "record_stage", "rerank_started", details={
+            "input_count": len(candidates), "provider_kind": "disabled", "attempt_count": 0,
+        })
+        result = _fallback_result(candidates, top_k, "disabled")
+        emit(trace, "record_stage", "rerank_completed", candidates=result.candidates, details={
+            "output_count": len(result.candidates), "provider_kind": "disabled",
+        }, latency_ms=(time.monotonic() - started) * 1000)
+        return result
 
 
 class FakeReranker:
@@ -197,9 +211,17 @@ class FakeReranker:
         self.scores = {str(key): float(value) for key, value in scores.items()}
         self.requests: list[tuple[str, tuple[str, ...]]] = []
 
-    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int) -> RerankResult:
+    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int, *, trace: Any | None = None) -> RerankResult:
+        started = time.monotonic()
+        emit(trace, "record_stage", "rerank_started", details={
+            "input_count": len(candidates), "provider_kind": "fake", "attempt_count": 1,
+        })
         self.requests.append((str(query), tuple(candidate.candidate_id for candidate in candidates)))
-        return _rank_with_scores(candidates, self.scores, top_k)
+        result = _rank_with_scores(candidates, self.scores, top_k)
+        emit(trace, "record_stage", "rerank_completed", candidates=result.candidates, details={
+            "output_count": len(result.candidates), "provider_kind": "fake",
+        }, latency_ms=(time.monotonic() - started) * 1000)
+        return result
 
 
 class ConfigurableModelReranker:
@@ -212,7 +234,11 @@ class ConfigurableModelReranker:
         self.timeout_seconds = float(timeout_seconds)
         self.max_attempts = int(max_attempts)
 
-    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int) -> RerankResult:
+    async def rerank(self, query: str, candidates: list[FusedCandidate], top_k: int, *, trace: Any | None = None) -> RerankResult:
+        started = time.monotonic()
+        emit(trace, "record_stage", "rerank_started", details={
+            "input_count": len(candidates), "provider_kind": "configured", "attempt_count": 0,
+        })
         request = RerankRequest(
             query=str(query),
             documents=tuple(RerankDocument(candidate.candidate_id, candidate_rerank_text(candidate)) for candidate in candidates),
@@ -228,7 +254,11 @@ class ConfigurableModelReranker:
                     if not isinstance(item, RerankScore) or item.candidate_id in scores:
                         raise RerankerMalformedResponse("malformed score entry")
                     scores[item.candidate_id] = float(item.score)
-                return _rank_with_scores(candidates, scores, top_k)
+                result = _rank_with_scores(candidates, scores, top_k)
+                emit(trace, "record_stage", "rerank_completed", candidates=result.candidates, details={
+                    "output_count": len(result.candidates), "provider_kind": "configured", "attempt_count": attempt + 1,
+                }, latency_ms=(time.monotonic() - started) * 1000)
+                return result
             except asyncio.TimeoutError as exc:
                 last_error = RerankerTimeoutError("timeout")
             except RerankerError as exc:

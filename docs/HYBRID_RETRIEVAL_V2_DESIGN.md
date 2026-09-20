@@ -111,6 +111,10 @@ unscoped vector or graph query.
 | `PARENT_EXPANSION_ENABLED` | `false` |
 | `FINAL_CONTEXT_TOP_K` | `8` |
 | `FINAL_CONTEXT_TOKEN_BUDGET` | `6000` estimated tokens |
+| `RETRIEVAL_TRACE_ENABLED` | `false` |
+| `RETRIEVAL_TRACE_MAX_ENTRIES` | `500` |
+| `RETRIEVAL_TRACE_TTL_SECONDS` | `1800` |
+| `RETRIEVAL_TRACE_MAX_CANDIDATES_PER_STAGE` | `50` |
 
 This design targets a small-to-medium single-instance knowledge base. It does
 not claim million-document search capacity; future scale work can evaluate a
@@ -177,3 +181,40 @@ counts only—never queries, prompts, full content, credentials, or paths.
 remain `HYBRID_RETRIEVAL_V2_ENABLED=false`, `RERANK_ENABLED=false`, and
 `PARENT_EXPANSION_ENABLED=false`; ordinary `/api/qa/ask` remains the V1
 vector-plus-graph heuristic path.
+
+## Phase E: safe Retrieval Trace
+
+`RetrievalTrace` is a separate observer for one V2 request. It is not
+`GraphEvidenceTrace`: GraphEvidenceTrace explains the lifecycle of an edge,
+while RetrievalTrace records the query-level BM25/vector/graph to FinalContext
+pipeline. A trace is passed explicitly as an optional sink; there is no global
+current-request object. Every emission is best effort, so a trace failure
+cannot alter retrieval results, ranking, retries, or availability.
+
+Finite stages are: `query_received`, `query_rewritten`,
+`bm25_retrieved`, `vector_retrieved`, `graph_retrieved`, `rrf_fused`,
+`rerank_started`, `rerank_completed`, `rerank_fallback`,
+`parent_expand_started`, `parent_expand_completed`, `budget_applied`, and
+`final_context_built`. The trace uses monotonic time for per-stage latency and
+records no generation latency because this V2 path ends before answer creation.
+
+Trace candidates contain only stable IDs, document/version/chunk/parent IDs,
+retrieval types and ranks, finite scores, safe source basename, lifecycle flags
+when supplied, and FinalContext support IDs. The collector never serializes
+candidate content, Parent content, metadata dumps, prompts, answers, raw query
+text, credentials, endpoints, absolute paths, or exception messages. Queries
+are represented only by SHA-256 fingerprints plus length/count metadata.
+Non-finite numbers become `null`.
+
+`RetrievalTraceStore` is an internal, thread-safe in-memory TTL store with
+bounded newest-entry retention. It has no Mongo, Redis, Kafka, telemetry, or
+public HTTP endpoint. Per-stage candidate capture is independently bounded and
+reports original/stored counts plus truncation. Its finite reason codes include
+invalid candidate, provenance/scope conflicts, rerank timeout/provider/malformed
+or candidate mismatch, parent missing/invalid/legacy, and budget/top-K outcomes.
+
+Trace is disabled by default even if an internal caller enables Retrieval V2.
+Phase F offline evaluation may pass a request-owned trace and consume safe
+stage counts, IDs, ranks, scores, latency, rerank fallback, parent expansion,
+budget decisions, and FinalContext identities; it must not treat trace records
+as an answer-quality judgment.

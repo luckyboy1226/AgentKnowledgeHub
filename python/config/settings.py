@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     parent_expansion_enabled: bool = False
     final_context_top_k: int = Field(default=8, ge=1, le=100)
     final_context_token_budget: int = Field(default=6000, ge=1, le=100_000)
+    # Retrieval Trace is independently opt-in and remains internal-only even
+    # when another caller enables the V2 retrieval pipeline.
+    retrieval_trace_enabled: bool = False
+    retrieval_trace_max_entries: int = Field(default=500, ge=1, le=10_000)
+    retrieval_trace_ttl_seconds: int = Field(default=1800, ge=1, le=86_400)
+    retrieval_trace_max_candidates_per_stage: int = Field(default=50, ge=1, le=500)
 
     # Explicit provider configuration. Empty values deliberately fall back to
     # the legacy variables above, keeping existing local .env files functional.

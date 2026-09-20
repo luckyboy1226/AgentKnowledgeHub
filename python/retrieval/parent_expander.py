@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import inspect
+import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from retrieval.reranker import RerankedCandidate
+from retrieval.trace_support import emit
 from services.chunk_models import UnicodeTokenEstimator
 
 
@@ -37,6 +39,7 @@ class ParentExpansionDiagnostics:
     parent_expand_attempt_count: int
     parent_expand_success_count: int
     parent_missing_count: int
+    parent_invalid_count: int
     parent_scope_rejected_count: int
     legacy_child_fallback_count: int
     graph_context_count: int
@@ -131,15 +134,26 @@ class ParentExpander:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         enabled: bool = True,
+        trace: Any | None = None,
     ) -> ParentExpansionResult:
+        started = time.monotonic()
+        emit(trace, "record_stage", "parent_expand_started", details={
+            "input_count": len(candidates), "enabled": bool(enabled),
+        })
         # Explicitly empty scopes cannot turn into unscoped parent reads.
         if allowed_document_ids is not None and not allowed_document_ids:
-            return ParentExpansionResult(
+            result = ParentExpansionResult(
                 contexts=(), fallback_contexts={},
-                diagnostics=ParentExpansionDiagnostics(0, 0, 0, len(candidates), 0, 0),
+                diagnostics=ParentExpansionDiagnostics(0, 0, 0, 0, len(candidates), 0, 0),
             )
+            emit(trace, "record_stage", "parent_expand_completed", details={
+                "attempt_count": 0, "success_count": 0, "parent_missing_count": 0,
+                "parent_invalid_count": 0, "scope_rejected_count": len(candidates),
+                "legacy_child_fallback_count": 0, "graph_context_count": 0,
+            }, latency_ms=(time.monotonic() - started) * 1000)
+            return result
 
-        attempts = successes = missing = scope_rejected = legacy_fallbacks = graph_count = 0
+        attempts = successes = missing = invalid = scope_rejected = legacy_fallbacks = graph_count = 0
         parent_groups: dict[tuple[str, int, str], dict[str, Any]] = {}
         standalone: dict[str, FinalContext] = {}
 
@@ -172,7 +186,10 @@ class ParentExpander:
             if not self._eligible_parent(parent, candidate, allowed_document_ids):
                 context = _candidate_fallback(candidate, estimator=self.estimator)
                 standalone.setdefault(context.context_id, context)
-                missing += 1
+                if parent is None:
+                    missing += 1
+                else:
+                    invalid += 1
                 continue
 
             key = (candidate.document_id, int(candidate.document_version), candidate.parent_chunk_id)
@@ -218,13 +235,19 @@ class ParentExpander:
             [*parent_contexts, *standalone.values()],
             key=lambda item: (item.final_rank, item.context_id),
         )
-        return ParentExpansionResult(
+        result = ParentExpansionResult(
             contexts=tuple(ordered),
             fallback_contexts=fallbacks,
             diagnostics=ParentExpansionDiagnostics(
-                attempts, successes, missing, scope_rejected, legacy_fallbacks, graph_count
+                attempts, successes, missing, invalid, scope_rejected, legacy_fallbacks, graph_count
             ),
         )
+        emit(trace, "record_stage", "parent_expand_completed", candidates=result.contexts, details={
+            "attempt_count": attempts, "success_count": successes, "parent_missing_count": missing,
+            "parent_invalid_count": invalid, "scope_rejected_count": scope_rejected,
+            "legacy_child_fallback_count": legacy_fallbacks, "graph_context_count": graph_count,
+        }, latency_ms=(time.monotonic() - started) * 1000)
+        return result
 
     @staticmethod
     def _eligible_parent(
@@ -256,29 +279,59 @@ def apply_context_budget(
     *,
     top_k: int = 8,
     token_budget: int = 6000,
+    trace: Any | None = None,
 ) -> tuple[tuple[FinalContext, ...], dict[str, int]]:
     """Select complete context units; use a child only when its parent cannot fit."""
     if top_k < 1 or token_budget < 1:
         raise ValueError("final context limits must be positive")
+    started = time.monotonic()
     selected: list[FinalContext] = []
     tokens_used = 0
-    for context in sorted(contexts, key=lambda item: (item.final_rank, item.context_id)):
+    ordered = sorted(contexts, key=lambda item: (item.final_rank, item.context_id))
+    decisions: list[tuple[FinalContext, bool, str | None]] = []
+    parent_to_child_fallback_count = 0
+    for context in ordered:
         if len(selected) >= top_k:
-            break
+            decisions.append((context, False, "top_k_truncated"))
+            continue
         chosen = context
         remaining = token_budget - tokens_used
         if context.estimated_token_count > remaining:
             fallback = fallback_contexts.get(context.context_id)
             if fallback is None or fallback.estimated_token_count > remaining:
+                decisions.append((context, False, "budget_exceeded"))
                 continue
             chosen = fallback
+            parent_to_child_fallback_count += 1
+            decisions.append((context, False, "parent_to_child_fallback"))
         if chosen.estimated_token_count > token_budget - tokens_used:
+            decisions.append((context, False, "budget_exceeded"))
             continue
         selected.append(replace(chosen, final_rank=len(selected) + 1))
+        decisions.append((chosen, True, None))
         tokens_used += chosen.estimated_token_count
-    return tuple(selected), {
+    diagnostics = {
         "budget_input_count": len(contexts),
         "budget_output_count": len(selected),
         "budget_dropped_count": len(contexts) - len(selected),
         "estimated_tokens_used": tokens_used,
+        "parent_to_child_fallback_count": parent_to_child_fallback_count,
     }
+    decision_rows = [
+        {
+            "context_id": context.context_id, "kind": context.kind, "accepted": accepted,
+            "reason_code": reason, "estimated_token_count": context.estimated_token_count,
+            "final_rank": context.final_rank,
+        }
+        for context, accepted, reason in decisions
+    ]
+    emit(trace, "record_stage", "budget_applied", candidates=selected, details={
+        "budget_input_count": diagnostics["budget_input_count"],
+        "budget_output_count": diagnostics["budget_output_count"],
+        "budget_dropped_count": diagnostics["budget_dropped_count"],
+        "estimated_tokens_used": diagnostics["estimated_tokens_used"],
+        "parent_to_child_fallback_count": diagnostics["parent_to_child_fallback_count"],
+        "estimated_token_budget": token_budget,
+        "decisions": decision_rows,
+    }, latency_ms=(time.monotonic() - started) * 1000)
+    return tuple(selected), diagnostics

@@ -107,7 +107,7 @@ async def test_context_builder_falls_back_to_rrf_for_timeout_provider_or_malform
     assert [context.supporting_candidate_ids[0] for context in result.contexts] == ["A", "B"]
     assert result.diagnostics.rerank_used is False
     assert result.diagnostics.rerank_fallback_reason in {
-        "RerankerTimeoutError", "RerankerUnavailableError", "RerankerMalformedResponse",
+        "RerankerTimeoutError", "RerankerUnavailableError", "RerankerMalformedResponse", "RerankerCandidateMismatch",
     }
 
 
