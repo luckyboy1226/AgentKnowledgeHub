@@ -170,7 +170,6 @@ def _rank_with_scores(candidates: list[FusedCandidate], scores: dict[str, float]
     indexed.sort(key=lambda item: (
         -scores[item[1].candidate_id],
         -item[1].rrf_score,
-        item[0],
         item[1].candidate_id,
     ))
     output = tuple(

@@ -1,0 +1,5 @@
+# Optional local-only BGE reranking dependencies.
+torch>=2.2
+transformers==4.38.1
+safetensors>=0.4
+sentencepiece>=0.2

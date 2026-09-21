@@ -3,6 +3,7 @@
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
@@ -76,6 +77,11 @@ class Settings(BaseSettings):
     # Phase D stays fully internal to Retrieval V2. No default QA path reads
     # these flags until a later phase explicitly wires an opt-in caller.
     rerank_enabled: bool = False
+    rerank_provider: str = "disabled"
+    rerank_model_path: str = ""
+    rerank_device: str = "auto"
+    rerank_batch_size: int = Field(default=4, ge=1, le=128)
+    rerank_max_length: int = Field(default=512, ge=8, le=8192)
     rerank_input_top_k: int = Field(default=30, ge=1, le=500)
     rerank_output_top_k: int = Field(default=12, ge=1, le=500)
     rerank_timeout_seconds: float = Field(default=10, gt=0, le=120)
@@ -202,6 +208,19 @@ class Settings(BaseSettings):
             raise ValueError("CHILD_OVERLAP_TOKENS must be smaller than CHILD_TARGET_TOKENS")
         if self.rerank_output_top_k > self.rerank_input_top_k:
             raise ValueError("RERANK_OUTPUT_TOP_K cannot exceed RERANK_INPUT_TOP_K")
+        provider = self.rerank_provider.strip().lower()
+        device = self.rerank_device.strip().lower()
+        if provider not in {"disabled", "local_bge"}:
+            raise ValueError("RERANK_PROVIDER must be disabled or local_bge")
+        if device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("RERANK_DEVICE must be auto, cpu, or cuda")
+        if self.rerank_enabled and provider != "local_bge":
+            raise ValueError("RERANK_ENABLED requires RERANK_PROVIDER=local_bge")
+        if self.rerank_enabled:
+            from retrieval.local_bge_reranker import validate_local_bge_model_path
+            if not self.rerank_model_path.strip() or not Path(self.rerank_model_path).is_dir():
+                raise ValueError("RERANK_MODEL_PATH must be an existing local directory")
+            validate_local_bge_model_path(self.rerank_model_path)
         return self
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

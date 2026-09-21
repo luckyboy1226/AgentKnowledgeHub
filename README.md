@@ -739,6 +739,14 @@ Docker volumes 不会被启动或停止脚本删除；不要使用 `docker compo
 
 ### GraphRAG 对照评测
 
+### 可选本地 BGE Reranker
+
+Hybrid V2 支持默认关闭的本地 BGE 精排层。模型目录只应配置在未跟踪的
+`python/.env` 中，禁止写入源码或提交；加载过程强制离线。配置、CPU/CUDA
+策略、失败回退和本地 synthetic smoke 见
+[`docs/LOCAL_RERANK_DESIGN.md`](docs/LOCAL_RERANK_DESIGN.md)。启用精排不会改变
+Chat、Embedding 或 Chroma 向量空间配置，真实 rerank A/B 仍需单独授权。
+
 Hybrid V2 的冻结输入、retrieval-only 四模式 A/B 协议见
 [`docs/HYBRID_V2_AB_BENCHMARK.md`](docs/HYBRID_V2_AB_BENCHMARK.md)。可用
 `python scripts/run-hybrid-v2-ab.py --offline --ab-run-id <run_id>` 生成 fake-only 报告；

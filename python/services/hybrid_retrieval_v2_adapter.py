@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from typing import Any
 from observability.retrieval_trace import RetrievalTrace
-from retrieval.reranker import DisabledReranker
 from services.graph_evidence_trace import GraphEvidenceTrace
 
 class HybridRetrievalV2ProductionAdapter:
@@ -51,8 +50,13 @@ class HybridRetrievalV2ProductionAdapter:
         else:
             lists={'bm25':raw['bm25'] if bm25 else [],'vector':raw['vector'],'graph':raw['graph'] if graph else []}; fused=self._fusion_factory().fuse(lists,trace=retrieval_trace).candidates
             if variant in {'hybrid_v2_no_rerank','full_hybrid_v2'}:
-                builder=self._context_builder_factory(); assert isinstance(getattr(builder,'reranker',DisabledReranker()),DisabledReranker)
+                builder=self._context_builder_factory()
+                if variant=='hybrid_v2_no_rerank' and bool(getattr(builder,'rerank_enabled',False)):
+                    raise ValueError('no_rerank_variant_requires_disabled_builder')
                 built=await builder.build(query,fused,allowed_document_ids=scope,trace=retrieval_trace); contexts=built.contexts
+                if audit is not None:
+                    diagnostics=getattr(built,'diagnostics',None)
+                    audit.reranker_calls+=int(bool(getattr(diagnostics,'rerank_used',False)))
                 result={'final_context_ids':[x.context_id for x in contexts],'document_ranks':[x.document_id for x in contexts if x.document_id],'candidate_ranks':[x.final_rank for x in contexts],'source_ids':[source for x in contexts if (source:=getattr(x,'source',None))],'latency':{},'graph_metrics':{'applicable':True},'context_builder_used':True}
             else:
                 result={'final_context_ids':[item.candidate_id for item in fused],'document_ranks':[item.document_id for item in fused if item.document_id],'candidate_ranks':list(range(1,len(fused)+1)),'source_ids':[source for item in fused if (source:=getattr(item,'source',None))],'latency':{},'graph_metrics':{'applicable':graph}}
