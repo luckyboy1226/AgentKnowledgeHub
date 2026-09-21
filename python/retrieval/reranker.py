@@ -43,12 +43,15 @@ class RerankDiagnostics:
     rerank_output_count: int
     rerank_used: bool
     rerank_fallback_reason: str | None
+    rerank_latency_ms: float | None = None
+    model_cold_load_latency_ms: float | None = None
 
 
 @dataclass(frozen=True)
 class RerankResult:
     candidates: tuple[RerankedCandidate, ...]
     diagnostics: RerankDiagnostics
+    all_candidates: tuple[RerankedCandidate, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -145,10 +148,11 @@ def _to_reranked(candidate: FusedCandidate, *, pre_rank: int, post_rank: int, sc
 
 
 def _fallback_result(candidates: list[FusedCandidate], top_k: int, reason: str | None) -> RerankResult:
-    output = tuple(
+    all_candidates = tuple(
         _to_reranked(candidate, pre_rank=index, post_rank=index, score=None)
-        for index, candidate in enumerate(candidates[:top_k], start=1)
+        for index, candidate in enumerate(candidates, start=1)
     )
+    output = all_candidates[:top_k]
     return RerankResult(
         candidates=output,
         diagnostics=RerankDiagnostics(
@@ -157,6 +161,7 @@ def _fallback_result(candidates: list[FusedCandidate], top_k: int, reason: str |
             rerank_used=False,
             rerank_fallback_reason=reason,
         ),
+        all_candidates=all_candidates,
     )
 
 
@@ -172,10 +177,11 @@ def _rank_with_scores(candidates: list[FusedCandidate], scores: dict[str, float]
         -item[1].rrf_score,
         item[1].candidate_id,
     ))
-    output = tuple(
+    all_candidates = tuple(
         _to_reranked(candidate, pre_rank=pre_rank, post_rank=post_rank, score=scores[candidate.candidate_id])
-        for post_rank, (pre_rank, candidate) in enumerate(indexed[:top_k], start=1)
+        for post_rank, (pre_rank, candidate) in enumerate(indexed, start=1)
     )
+    output = all_candidates[:top_k]
     return RerankResult(
         candidates=output,
         diagnostics=RerankDiagnostics(
@@ -184,6 +190,7 @@ def _rank_with_scores(candidates: list[FusedCandidate], scores: dict[str, float]
             rerank_used=True,
             rerank_fallback_reason=None,
         ),
+        all_candidates=all_candidates,
     )
 
 
@@ -197,9 +204,21 @@ class DisabledReranker:
             "input_count": len(candidates), "provider_kind": "disabled", "attempt_count": 0,
         })
         result = _fallback_result(candidates, top_k, "disabled")
+        elapsed_ms = (time.monotonic() - started) * 1000
+        result = RerankResult(
+            candidates=result.candidates,
+            diagnostics=RerankDiagnostics(
+                rerank_input_count=result.diagnostics.rerank_input_count,
+                rerank_output_count=result.diagnostics.rerank_output_count,
+                rerank_used=False,
+                rerank_fallback_reason="disabled",
+                rerank_latency_ms=elapsed_ms,
+            ),
+            all_candidates=result.all_candidates,
+        )
         emit(trace, "record_stage", "rerank_completed", candidates=result.candidates, details={
             "output_count": len(result.candidates), "provider_kind": "disabled",
-        }, latency_ms=(time.monotonic() - started) * 1000)
+        }, latency_ms=elapsed_ms)
         return result
 
 
@@ -254,6 +273,22 @@ class ConfigurableModelReranker:
                         raise RerankerMalformedResponse("malformed score entry")
                     scores[item.candidate_id] = float(item.score)
                 result = _rank_with_scores(candidates, scores, top_k)
+                provider_diagnostics = getattr(self.provider, "last_diagnostics", {})
+                total_latency_ms = (time.monotonic() - started) * 1000
+                cold_load_latency_ms = provider_diagnostics.get("model_cold_load_latency_ms")
+                query_latency_ms = max(0.0, total_latency_ms - float(cold_load_latency_ms or 0.0))
+                result = RerankResult(
+                    candidates=result.candidates,
+                    diagnostics=RerankDiagnostics(
+                        rerank_input_count=result.diagnostics.rerank_input_count,
+                        rerank_output_count=result.diagnostics.rerank_output_count,
+                        rerank_used=True,
+                        rerank_fallback_reason=None,
+                        rerank_latency_ms=query_latency_ms,
+                        model_cold_load_latency_ms=cold_load_latency_ms,
+                    ),
+                    all_candidates=result.all_candidates,
+                )
                 emit(trace, "record_stage", "rerank_completed", candidates=result.candidates, details={
                     "output_count": len(result.candidates), "provider_kind": "configured", "attempt_count": attempt + 1,
                 }, latency_ms=(time.monotonic() - started) * 1000)

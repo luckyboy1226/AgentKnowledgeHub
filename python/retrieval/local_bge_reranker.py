@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import threading
@@ -24,6 +25,26 @@ class LocalBGEModelIdentity:
     architecture: str
     model_type: str
     weight_format: str
+
+
+def local_bge_model_identity_hash(model_path: str | Path) -> str:
+    """Hash the validated local model payload without persisting its path."""
+    path = Path(model_path)
+    validate_local_bge_model_path(path)
+    digest = hashlib.sha256()
+    names = ("config.json", "tokenizer.json", "sentencepiece.bpe.model",
+             "tokenizer_config.json", "special_tokens_map.json",
+             "model.safetensors", "pytorch_model.bin")
+    for name in names:
+        item = path / name
+        if not item.is_file():
+            continue
+        digest.update(name.encode("utf-8")); digest.update(b"\0")
+        with item.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def validate_local_bge_model_path(model_path: str | Path) -> LocalBGEModelIdentity:
@@ -134,6 +155,7 @@ class LocalBGERerankProvider:
         self._runtime_factory = runtime_factory or _TransformersBGERuntime
         self._runtime: Any | None = None
         self._load_lock = threading.Lock()
+        self._cold_load_latency_ms: float | None = None
         self.last_diagnostics: dict[str, Any] = {
             "provider_kind": "local_bge", "device_type": None, "candidate_count": 0,
             "batch_count": 0, "elapsed_ms": 0.0, "fallback_reason": None,
@@ -143,12 +165,14 @@ class LocalBGERerankProvider:
         if self._runtime is None:
             with self._load_lock:
                 if self._runtime is None:
+                    started = time.perf_counter()
                     try:
                         self._runtime = self._runtime_factory(self.model_path, self.device)
                     except RerankerUnavailableError:
                         raise
                     except Exception as exc:
                         raise RerankerUnavailableError("model_load_failed") from exc
+                    self._cold_load_latency_ms = round((time.perf_counter() - started) * 1000, 3)
         return self._runtime
 
     def _score_sync(self, request: RerankRequest) -> tuple[RerankScore, ...]:
@@ -157,7 +181,9 @@ class LocalBGERerankProvider:
         if not candidate_ids or len(candidate_ids) != len(set(candidate_ids)):
             raise RerankerMalformedResponse("candidate identity invalid")
         try:
+            cold_before = self._cold_load_latency_ms
             runtime = self._runtime_once()
+            cold_this_call = self._cold_load_latency_ms if cold_before is None else None
             values = runtime.score_pairs(
                 str(request.query), [str(document.text) for document in request.documents],
                 batch_size=self.batch_size, max_length=self.max_length,
@@ -172,6 +198,7 @@ class LocalBGERerankProvider:
                 "candidate_count": len(candidate_ids),
                 "batch_count": math.ceil(len(candidate_ids) / self.batch_size),
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                "model_cold_load_latency_ms": cold_this_call,
                 "fallback_reason": None,
             }
             return tuple(RerankScore(candidate_id, score) for candidate_id, score in zip(candidate_ids, scores))
@@ -181,6 +208,7 @@ class LocalBGERerankProvider:
                 "candidate_count": len(candidate_ids),
                 "batch_count": math.ceil(len(candidate_ids) / self.batch_size),
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                "model_cold_load_latency_ms": self._cold_load_latency_ms,
                 "fallback_reason": type(exc).__name__,
             }
             raise
@@ -190,6 +218,7 @@ class LocalBGERerankProvider:
                 "candidate_count": len(candidate_ids),
                 "batch_count": math.ceil(len(candidate_ids) / self.batch_size),
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                "model_cold_load_latency_ms": self._cold_load_latency_ms,
                 "fallback_reason": "RerankerUnavailableError",
             }
             raise RerankerUnavailableError("inference_failed") from exc

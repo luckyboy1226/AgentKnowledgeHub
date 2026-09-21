@@ -747,6 +747,18 @@ Hybrid V2 支持默认关闭的本地 BGE 精排层。模型目录只应配置�
 [`docs/LOCAL_RERANK_DESIGN.md`](docs/LOCAL_RERANK_DESIGN.md)。启用精排不会改变
 Chat、Embedding 或 Chroma 向量空间配置，真实 rerank A/B 仍需单独授权。
 
+可先运行不加载模型、不连接数据库的 paired R2 契约检查：
+
+```powershell
+conda run -n kghub python scripts/run-hybrid-v2-rerank-ab.py --offline `
+  --run-id g2-real-ingestion-20260920-02 `
+  --ab-run-id hybrid-v2-rerank-ab-offline
+```
+
+它只比较共享 RRF Top-20 候选池的保序 arm 和 fake rerank arm；真实本地 CPU
+A/B 仍保持 fail-closed，必须另行授权。协议见
+[`docs/LOCAL_RERANK_AB_DESIGN.md`](docs/LOCAL_RERANK_AB_DESIGN.md)。
+
 Hybrid V2 的冻结输入、retrieval-only 四模式 A/B 协议见
 [`docs/HYBRID_V2_AB_BENCHMARK.md`](docs/HYBRID_V2_AB_BENCHMARK.md)。可用
 `python scripts/run-hybrid-v2-ab.py --offline --ab-run-id <run_id>` 生成 fake-only 报告；

@@ -54,3 +54,8 @@ conda run -n kghub python scripts/run-local-rerank-smoke.py `
 
 Real rerank A/B remains a separately authorized R2 operation. The immutable
 no-rerank baseline must not be overwritten.
+
+R2 uses a paired protocol rather than two independent retrieval calls. See
+`LOCAL_RERANK_AB_DESIGN.md`: both arms share one RRF Top-20 candidate pool,
+then produce a final Top-8 after parent expansion. Benchmark failures are
+explicit; only normal QA retains the availability-oriented RRF fallback.

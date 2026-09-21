@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from retrieval.fusion import FusedCandidate
 from retrieval.parent_expander import FinalContext, ParentExpander, apply_context_budget
-from retrieval.reranker import DisabledReranker, RerankDiagnostics, RerankResult, Reranker, RerankerError
+from retrieval.reranker import DisabledReranker, RerankDiagnostics, RerankedCandidate, RerankResult, Reranker, RerankerError
 from retrieval.trace_support import emit
 
 
@@ -32,12 +32,15 @@ class ContextBuilderDiagnostics:
     budget_dropped_count: int
     estimated_tokens_used: int
     parent_to_child_fallback_count: int
+    rerank_latency_ms: float | None = None
+    model_cold_load_latency_ms: float | None = None
 
 
 @dataclass(frozen=True)
 class ContextBuilderResult:
     contexts: tuple[FinalContext, ...]
     diagnostics: ContextBuilderDiagnostics
+    reranked_candidates: tuple[RerankedCandidate, ...] = ()
 
 
 class ContextBuilderV2:
@@ -73,12 +76,15 @@ class ContextBuilderV2:
         *,
         allowed_document_ids: frozenset[str] | None = None,
         trace: object | None = None,
+        strict_rerank: bool = False,
     ) -> ContextBuilderResult:
         rrf_top = list(candidates)[:self.rerank_input_top_k]
         if self.rerank_enabled:
             try:
                 rerank_result = await self.reranker.rerank(query, rrf_top, self.rerank_output_top_k, trace=trace)
             except RerankerError as exc:
+                if strict_rerank:
+                    raise
                 reason_map = {
                     "RerankerTimeoutError": "rerank_timeout",
                     "RerankerMalformedResponse": "rerank_malformed",
@@ -95,6 +101,7 @@ class ContextBuilderV2:
                         rerank_used=False,
                         rerank_fallback_reason=type(exc).__name__,
                     ),
+                    all_candidates=fallback.all_candidates,
                 )
         else:
             rerank_result = await DisabledReranker().rerank(query, rrf_top, self.rerank_output_top_k, trace=trace)
@@ -142,5 +149,8 @@ class ContextBuilderV2:
                 budget_dropped_count=budget["budget_dropped_count"],
                 estimated_tokens_used=budget["estimated_tokens_used"],
                 parent_to_child_fallback_count=budget["parent_to_child_fallback_count"],
+                rerank_latency_ms=rerank.rerank_latency_ms,
+                model_cold_load_latency_ms=rerank.model_cold_load_latency_ms,
             ),
+            reranked_candidates=rerank_result.all_candidates,
         )

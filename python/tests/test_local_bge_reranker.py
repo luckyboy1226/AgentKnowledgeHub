@@ -11,6 +11,7 @@ from config.settings import Settings
 from retrieval.context_builder import ContextBuilderV2
 from retrieval.local_bge_reranker import (
     LocalBGERerankProvider,
+    local_bge_model_identity_hash,
     select_local_bge_device,
     validate_local_bge_model_path,
 )
@@ -34,6 +35,14 @@ def model_dir(tmp_path: Path) -> Path:
     (path/"tokenizer.json").write_text("{}",encoding="utf-8")
     (path/"model.safetensors").write_bytes(b"fixture")
     return path
+
+
+def test_local_model_identity_hash_is_stable_and_payload_sensitive(tmp_path):
+    path = model_dir(tmp_path)
+    first = local_bge_model_identity_hash(path)
+    assert first == local_bge_model_identity_hash(path) and len(first) == 64
+    (path / "tokenizer.json").write_text('{"changed":true}', encoding="utf-8")
+    assert local_bge_model_identity_hash(path) != first
 
 
 class FakeRuntime:
