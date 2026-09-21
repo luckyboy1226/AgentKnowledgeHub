@@ -1,5 +1,6 @@
 """Explicit, zero-I/O production composition for the Phase G runtime."""
 from __future__ import annotations
+import time
 from typing import Any
 from observability.retrieval_trace import RetrievalTrace
 from retrieval.reranker import DisabledReranker
@@ -26,26 +27,50 @@ class HybridRetrievalV2ProductionAdapter:
                 'ranked_edge_count':len(payload.get('rank_positions') or {})}
 
     async def run_variant(self, plan:dict[str,Any], variant:str, scope:frozenset[str], *, trace=None, graph_trace=None, audit=None, query_embedding=None)->dict[str,Any]:
+        started=time.perf_counter()
         if not scope: raise ValueError('empty_scope')
-        graph=variant in {'vector_graph_rrf','hybrid_v2_no_rerank'}; bm25=variant in {'bm25_vector_rrf','hybrid_v2_no_rerank'}
+        modes={
+            'vector_only':(True,False,False), 'bm25_only':(False,True,False),
+            'graph_only':(False,False,True), 'bm25_vector_rrf':(True,True,False),
+            'vector_graph_rrf':(True,False,True), 'hybrid_v2_no_rerank':(True,True,True),
+            'full_hybrid_v2':(True,True,True),
+        }
+        if variant not in modes: raise ValueError('invalid_variant')
+        vector,bm25,graph=modes[variant]
         if graph_trace and not graph: raise ValueError('graph_trace_not_applicable')
-        hybrid=self._hybrid_factory(); selection={'vector':True,'bm25':bm25,'graph':graph}; query=(plan.get('queries') or [''])[0]
+        hybrid=self._hybrid_factory(); selection={'vector':vector,'bm25':bm25,'graph':graph}; query=(plan.get('queries') or [''])[0]
         question_id=str(plan.get('question_id') or 'unknown')
         retrieval_trace=RetrievalTrace(f'{self._trace_run_id}:{question_id}:{variant}') if trace is True else (trace if trace not in (False, None) else None)
         evidence_trace=GraphEvidenceTrace(run_id=self._trace_run_id,question_id=question_id,scope_verified=True,allowed_document_ids_count=len(scope)) if graph_trace is True else (graph_trace if graph_trace not in (False, None) else None)
         raw=await hybrid.retrieve(query,entities=plan.get('entities',[]) if graph else [],allowed_document_ids=scope,bm25_enabled=bm25,trace=retrieval_trace,selection=selection,graph_trace=evidence_trace,query_embedding=query_embedding)
         if audit is not None:
-            audit.vector_searches+=int(bool(selection['vector'])); audit.bm25_searches+=int(bm25); audit.graph_queries+=int(graph and bool(plan.get('entities')))
-        if variant=='vector_only':
-            items=raw['vector']; result={'final_context_ids':[item.candidate_id for item in items], 'document_ranks':[item.document_id for item in items if item.document_id], 'candidate_ranks':[item.rank for item in items], 'latency':{},'graph_metrics':{'applicable':False}}
+            audit.vector_searches+=int(vector); audit.bm25_searches+=int(bm25); audit.graph_queries+=int(graph and bool(plan.get('entities')))
+        if variant in {'vector_only','bm25_only','graph_only'}:
+            channel={'vector_only':'vector','bm25_only':'bm25','graph_only':'graph'}[variant]; items=raw[channel]
+            result={'final_context_ids':[item.candidate_id for item in items], 'document_ranks':[item.document_id for item in items if item.document_id], 'candidate_ranks':[item.rank for item in items], 'source_ids':[source for item in items if (source:=getattr(item,'source',None))], 'latency':{},'graph_metrics':{'applicable':graph}}
         else:
             lists={'bm25':raw['bm25'] if bm25 else [],'vector':raw['vector'],'graph':raw['graph'] if graph else []}; fused=self._fusion_factory().fuse(lists,trace=retrieval_trace).candidates
-            if variant=='hybrid_v2_no_rerank':
+            if variant in {'hybrid_v2_no_rerank','full_hybrid_v2'}:
                 builder=self._context_builder_factory(); assert isinstance(getattr(builder,'reranker',DisabledReranker()),DisabledReranker)
                 built=await builder.build(query,fused,allowed_document_ids=scope,trace=retrieval_trace); contexts=built.contexts
-                result={'final_context_ids':[x.context_id for x in contexts],'document_ranks':[x.document_id for x in contexts if x.document_id],'candidate_ranks':[x.final_rank for x in contexts],'latency':{},'graph_metrics':{'applicable':True},'context_builder_used':True}
+                result={'final_context_ids':[x.context_id for x in contexts],'document_ranks':[x.document_id for x in contexts if x.document_id],'candidate_ranks':[x.final_rank for x in contexts],'source_ids':[source for x in contexts if (source:=getattr(x,'source',None))],'latency':{},'graph_metrics':{'applicable':True},'context_builder_used':True}
             else:
-                result={'final_context_ids':[item.candidate_id for item in fused],'document_ranks':[item.document_id for item in fused if item.document_id],'candidate_ranks':list(range(1,len(fused)+1)),'latency':{},'graph_metrics':{'applicable':graph}}
+                result={'final_context_ids':[item.candidate_id for item in fused],'document_ranks':[item.document_id for item in fused if item.document_id],'candidate_ranks':list(range(1,len(fused)+1)),'source_ids':[source for item in fused if (source:=getattr(item,'source',None))],'latency':{},'graph_metrics':{'applicable':graph}}
+        graph_candidates=list(raw['graph']) if graph else []
+        graph_edges=[]; graph_provenance=[]
+        for candidate in graph_candidates:
+            metadata=getattr(candidate,'metadata',None)
+            for edge in metadata.get('evidence_edges',[]) if isinstance(metadata,dict) else []:
+                if isinstance(edge,dict):
+                    graph_edges.append([str(edge.get(key) or '') for key in ('subject','predicate','object','direction')])
+                    graph_provenance.append({'document_id':str(edge.get('document_id') or ''),'source':str(edge.get('source') or '').replace('\\','/').rsplit('/',1)[-1]})
+        result.setdefault('source_ids',[])
+        result['graph_candidate_ids']=[item.candidate_id for item in graph_candidates]
+        result['graph_edges']=graph_edges; result['graph_provenance']=graph_provenance
+        final_ids=set(result.get('final_context_ids') or [])
+        result['graph_final_candidate_ids']=[item.candidate_id for item in graph_candidates
+                                             if item.candidate_id in final_ids or f'graph:{item.candidate_id}' in final_ids]
+        result['latency']={'retrieval_total_ms':round((time.perf_counter()-started)*1000,3)}
         if isinstance(retrieval_trace, RetrievalTrace): result['trace_diagnostics']={'retrieval':self._retrieval_diagnostics(retrieval_trace)}
         if isinstance(evidence_trace, GraphEvidenceTrace): result.setdefault('trace_diagnostics',{})['graph']=self._graph_diagnostics(evidence_trace)
         return result

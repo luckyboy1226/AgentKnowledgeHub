@@ -739,6 +739,12 @@ Docker volumes 不会被启动或停止脚本删除；不要使用 `docker compo
 
 ### GraphRAG 对照评测
 
+Hybrid V2 的冻结输入、retrieval-only 四模式 A/B 协议见
+[`docs/HYBRID_V2_AB_BENCHMARK.md`](docs/HYBRID_V2_AB_BENCHMARK.md)。可用
+`python scripts/run-hybrid-v2-ab.py --offline --ab-run-id <run_id>` 生成 fake-only 报告；
+该离线结果只验证 runner、隔离和指标计算，不能用于宣称真实检索质量提升。真实只读 A/B
+必须另外授权，并复用冻结的 query plan、allowlist 与 query-embedding snapshot。
+
 企业级 benchmark fixture 位于 `benchmarks/enterprise_20docs_60q/`，包含 20 份固定合成文档和
 60 道固定问题；fixture 是评测输入，不应为提高任一模式分数而修改。默认离线 runner 会加载它：
 

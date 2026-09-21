@@ -40,13 +40,15 @@ class HybridRetrievalV2RealRuntime:
     async def build_query_plan(self,question,run_id):
         builder=self._plan_factory(); self.audit.query_plan_llm_calls+=2; plan=await builder.build_evaluation_query_plan(question['question'],run_id=run_id,question_id=question['question_id'])
         return {'question_id':plan.question_id,'queries':list(plan.queries) or [plan.normalized_query],'entities':list(plan.entities),'keywords':list(plan.keywords),'intent':getattr(plan.intent,'value',plan.intent)}
-    async def evaluate(self,plan,variant,allow,*,trace=False,graph_trace=False):
-        if variant not in {'vector_only','bm25_vector_rrf','vector_graph_rrf','hybrid_v2_no_rerank'}: raise ValueError('invalid_variant')
-        if graph_trace and variant not in GRAPH_VARIANTS: raise ValueError('graph_trace_not_applicable')
+    async def evaluate(self,plan,variant,allow,*,trace=False,graph_trace=False,query_ordinal=0):
+        ab_graph_variants={'graph_only','full_hybrid_v2'}
+        if variant not in {'vector_only','bm25_only','graph_only','full_hybrid_v2','bm25_vector_rrf','vector_graph_rrf','hybrid_v2_no_rerank'}: raise ValueError('invalid_variant')
+        if graph_trace and variant not in GRAPH_VARIANTS|ab_graph_variants: raise ValueError('graph_trace_not_applicable')
         before=self.audit.snapshot()
-        query_embedding=self._embedding_snapshot.vector_for(run_id=self._run_id,plan=plan,query_plans_hash=self._query_plans_hash,embedding=self._embedding_identity) if self._embedding_snapshot is not None else None
+        query_embedding=self._embedding_snapshot.vector_for(run_id=self._run_id,plan=plan,query_plans_hash=self._query_plans_hash,embedding=self._embedding_identity,query_ordinal=query_ordinal) if self._embedding_snapshot is not None else None
+        selected_plan={**plan,'queries':[list(plan.get('queries') or [])[query_ordinal]]}
         if self._production_adapter_factory is not None:
-            result=await self._production_adapter_factory().run_variant(plan,variant,frozenset(allow),trace=trace,graph_trace=graph_trace,audit=self.audit,query_embedding=query_embedding)
+            result=await self._production_adapter_factory().run_variant(selected_plan,variant,frozenset(allow),trace=trace,graph_trace=graph_trace,audit=self.audit,query_embedding=query_embedding)
         else:
             s=self._services_factory(); entities=plan.get('entities',[]) if variant in GRAPH_VARIANTS else []; bm25=variant in {'bm25_vector_rrf','hybrid_v2_no_rerank'}
             result=await s.run_variant(plan,variant,frozenset(allow),entities=entities,bm25_enabled=bm25,trace=trace,graph_trace=graph_trace,audit=self.audit)
@@ -54,7 +56,7 @@ class HybridRetrievalV2RealRuntime:
             # An observer may correlate ON/OFF calls by the committed vector
             # hash, but must never receive vector values or query text.
             result.setdefault('trace_diagnostics', {})['query_embedding']={
-                'vector_sha256':self._embedding_snapshot.vector_hash_for(run_id=self._run_id,plan=plan,query_plans_hash=self._query_plans_hash,embedding=self._embedding_identity),
+                'vector_sha256':self._embedding_snapshot.vector_hash_for(run_id=self._run_id,plan=plan,query_plans_hash=self._query_plans_hash,embedding=self._embedding_identity,query_ordinal=query_ordinal),
             }
         return {**result,'call_audit':self.audit.delta(before)}
 
@@ -199,12 +201,16 @@ def build_hosted_real_runtime(host: Any, *, trace_run_id: str = 'phase-g', embed
         context_builder_factory=lambda: components["ContextBuilderV2"],
         trace_run_id=trace_run_id,
     )
+    snapshot_run_id=(str(embedding_snapshot.payload.get('run_id') or '')
+                     if embedding_snapshot is not None else trace_run_id)
+    if not snapshot_run_id:
+        raise ValueError('snapshot_run_id_missing')
     return HybridRetrievalV2RealRuntime(
         coordinator_factory=lambda: components["DocumentUpdateCoordinator"],
         services_factory=lambda: RealRuntimeStorageVerifier(components),
         plan_factory=lambda: (_ for _ in ()).throw(RuntimeError("query_plans_require_g3_authorization")),
         production_adapter_factory=lambda: production,
-        embedding_snapshot=embedding_snapshot, run_id=trace_run_id,
+        embedding_snapshot=embedding_snapshot, run_id=snapshot_run_id,
         embedding_identity={"provider":host.settings.embedding_config.provider,"model":host.settings.embedding_config.model,"dimension":host.settings.embedding_dimensions,"embedding_space_id":host.settings.resolved_embedding_space_id},
         query_plans_hash=query_plans_hash,
     )
