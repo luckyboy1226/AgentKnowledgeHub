@@ -222,6 +222,7 @@ class ControlledRealEvaluationRunner:
 
     async def ingest(self, adapter: RealEvaluationAdapter, source_documents: Sequence[dict[str, Any]]) -> dict[str, Any]:
         self._manifest(); progress = self._read("ingestion-progress.json", {"documents": []}); done = {row.get("logical_key"): row for row in progress["documents"] if row.get("status") == "ready"}
+        pc_expected = self.configuration.get("parent_child_expected")
         for document in source_documents:
             key = str(document.get("id") or document.get("logical_key") or "")
             if not key: self._fail("invalid_logical_key"); raise ValueError("invalid_logical_key")
@@ -231,9 +232,18 @@ class ControlledRealEvaluationRunner:
                 document_id = str(row.get("document_id") or "")
                 if not _uuid(document_id): raise ValueError("invalid_document_uuid")
                 verified = await adapter.verify_document(document_id)
-                if not all(verified.get(key) is True for key in ("ready", "current", "parents_ready", "children_ready", "vectors_current", "graph_provenance_current")):
+                required=("ready", "current", "parents_ready", "children_ready", "vectors_current", "graph_provenance_current")
+                if pc_expected:
+                    required=(*required,"bm25_current")
+                if not all(verified.get(key) is True for key in required):
                     raise ValueError("ingestion_incomplete")
+                stats=verified.get("parent_child_stats") if pc_expected else None
+                if pc_expected:
+                    if (not isinstance(stats,dict) or int(stats.get("parent_count") or 0) != int(pc_expected["parent_count"])
+                            or not int(pc_expected["child_min"]) <= int(stats.get("child_count") or 0) <= int(pc_expected["child_max"])):
+                        raise ValueError("parent_child_shape_unexpected")
                 item = {"logical_key": key, "source": Path(str(document.get("filename") or "")).name, "document_id": document_id, "document_version": int(row.get("document_version") or row.get("version") or 0), "status": "ready", "content_hash": str(row.get("content_hash") or ""), "operation_id": row.get("operation_id")}
+                if stats is not None: item["parent_child_stats"]=stats
                 progress["documents"].append(item); atomic_json(self.path("ingestion-progress.json"), progress)
             except Exception as exc:
                 self._write_state(RunState.FAILED, error=type(exc).__name__, failed_document={"logical_key": key, "operation_id": getattr(adapter, "last_ingestion_operation", {}).get("operation_id")})
@@ -242,7 +252,10 @@ class ControlledRealEvaluationRunner:
         if len(progress["documents"]) != expected: self._fail("ingestion_count_mismatch"); raise ValueError("ingestion_count_mismatch")
         mapping = {row["logical_key"]: row["document_id"] for row in progress["documents"]}; allowlist = sorted(mapping.values())
         if len(set(allowlist)) != expected or any(not _uuid(value) for value in allowlist): self._fail("invalid_allowlist"); raise ValueError("invalid_allowlist")
-        atomic_json(self.path("ingestion-results.json"), progress); atomic_json(self.path("document-map.json"), {"run_id": self.run_id, "mapping": mapping}); atomic_json(self.path("document-allowlist.json"), {"run_id": self.run_id, "document_ids": allowlist, "sha256": _hash(allowlist)}); self._write_state(RunState.INGESTED); return mapping
+        atomic_json(self.path("ingestion-results.json"), progress); atomic_json(self.path("document-map.json"), {"run_id": self.run_id, "mapping": mapping}); atomic_json(self.path("document-allowlist.json"), {"run_id": self.run_id, "document_ids": allowlist, "sha256": _hash(allowlist)})
+        if pc_expected:
+            atomic_json(self.path("parent-child-ingestion-stats.json"), {"run_id":self.run_id,"documents":[{"logical_key":row["logical_key"],"document_id":row["document_id"],"document_version":row["document_version"],"parent_child_stats":row["parent_child_stats"]} for row in progress["documents"]]})
+        self._write_state(RunState.INGESTED); return mapping
 
     async def recover_ready_document(self, adapter: RealEvaluationAdapter, record: dict[str, Any]) -> dict[str, Any]:
         """Record one previously completed Coordinator operation without re-ingestion.

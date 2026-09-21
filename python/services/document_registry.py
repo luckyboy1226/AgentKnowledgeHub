@@ -191,6 +191,21 @@ class DocumentRegistry:
             namespace=document["namespace"],
         )
 
+    def retry_failed_version(self, document_id: str, version: int, filename: str, content: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Re-reserve one exact failed, non-current version without creating v+1."""
+        document=self.find(str(document_id)); content_hash=hashlib.sha256(content).hexdigest()
+        record=self.versions.find_one({"document_id":str(document_id),"version":int(version)},{"_id":0})
+        if (not document or not record or document.get("status") != "failed" or document.get("current_version") is not None
+                or record.get("status") != "failed" or record.get("is_current") is True
+                or record.get("content_hash") != content_hash or record.get("filename") != safe_key(filename)):
+            raise RegistryError("Failed version is not eligible for exact retry")
+        now=utcnow()
+        self.versions.update_one({"document_id":str(document_id),"version":int(version)}, {"$set":{"status":"processing","is_current":False,"error_summary":None,"updated_at":now}})
+        self.documents.update_one({"document_id":str(document_id)}, {"$set":{"status":"processing","updated_at":now}})
+        refreshed=self.versions.find_one({"document_id":str(document_id),"version":int(version)},{"_id":0})
+        if refreshed is None: raise RegistryError("Failed version retry reservation was not persisted")
+        return self.find(str(document_id)) or document, refreshed
+
     def transition(
         self,
         document_id: str,

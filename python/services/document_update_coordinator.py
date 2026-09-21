@@ -14,6 +14,7 @@ from agents.knowledge_extract_agent import Entity, Relation
 from services.chunk_models import ChildChunk, ParentChunk
 from services.document_registry import RegistryError, safe_error, safe_key, utcnow
 from services.processing_errors import classify_safe_processing_error
+from services.knowledge_graph import KnowledgeGraphService
 
 
 ACTIVE_OPERATION_STATUSES = {"pending", "running", "compensating"}
@@ -24,6 +25,11 @@ INCOMPLETE_OPERATION_STATUSES = {
     "cleanup_pending",
     "needs_reconciliation",
 }
+
+
+def _prepared_graph_evidence_keys(document_id: str, version: int, relations: list[Relation]) -> set[str]:
+    """Map prepared relations to the graph's durable evidence identities."""
+    return {KnowledgeGraphService.evidence_key_for_relation(document_id, version, relation) for relation in relations}
 
 
 class DocumentProcessor(Protocol):
@@ -360,6 +366,23 @@ class DocumentUpdateCoordinator:
             self.journal.release_lock(document_id, operation_id)
             raise
 
+    async def retry_failed_create_version(self, *, document_id: str, version: int, filename: str, content: bytes,
+                                          failed_operation_id: str, recovery_operation_id: str | None = None) -> dict[str, Any]:
+        """Retry exactly one failed create version; never allocate a new UUID or version."""
+        failed=self.journal.get(str(failed_operation_id))
+        if (not failed or failed.get("status") != "failed" or failed.get("operation_type") != "create"
+                or str(failed.get("document_id")) != str(document_id) or int(failed.get("version") or 0) != int(version)
+                or failed.get("previous_current_version") is not None):
+            raise OperationIdentityConflictError("Failed operation is not eligible for exact retry")
+        document, version_record=self.registry.retry_failed_version(str(document_id),int(version),filename,content)
+        if str(document.get("document_id")) != str(document_id) or int(version_record.get("version") or 0) != int(version):
+            raise RegistryError("Exact retry identity changed")
+        return await self._run_reserved_version(
+            document=document, version_record=version_record, filename=filename, content=content,
+            operation_type="retry_failed_create", operation_id=recovery_operation_id or str(uuid.uuid4()),
+            namespace=document.get("namespace"), logical_key=document.get("logical_key"),
+        )
+
     def _record_unchanged(
         self,
         operation_id: str | None,
@@ -487,11 +510,16 @@ class DocumentUpdateCoordinator:
                 **graph_stage_kwargs,
             )
             evidence = await self.knowledge_graph.list_document_evidence(document_id, version)
-            if len(evidence) != len(prepared.relations):
-                raise RuntimeError("Graph stage count does not match prepared relations")
-            evidence_keys = [row.get("evidence_key") for row in evidence if row.get("evidence_key")]
+            expected_evidence_keys = _prepared_graph_evidence_keys(document_id, version, prepared.relations)
+            evidence_keys = [str(row.get("evidence_key") or "") for row in evidence]
+            observed_evidence_keys = set(evidence_keys)
+            if (not all(evidence_keys) or len(evidence_keys) != len(observed_evidence_keys)
+                    or observed_evidence_keys != expected_evidence_keys
+                    or any(row.get("status") != "processing" or row.get("is_current") is not False for row in evidence)):
+                raise RuntimeError("Graph stage evidence identities do not match prepared relations")
             self.journal.complete_step(
-                operation_id, "graph_staged", graph_evidence_keys=evidence_keys
+                operation_id, "graph_staged", graph_evidence_keys=sorted(observed_evidence_keys),
+                prepared_relation_count=len(prepared.relations), graph_evidence_identity_count=len(expected_evidence_keys),
             )
 
             await self.vector_store.activate_document_version(document_id, version)

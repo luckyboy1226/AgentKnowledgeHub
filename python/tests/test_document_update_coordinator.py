@@ -13,6 +13,7 @@ import pytest
 from agents.doc_parser_agent import DocType, DocumentChunk, StructuredBlock
 from agents.knowledge_extract_agent import Entity, Relation
 from services.chunk_models import build_parent_child_chunks
+from services.knowledge_graph import KnowledgeGraphService
 from services.document_registry import utcnow
 from services.document_update_coordinator import (
     DocumentUpdateCoordinator,
@@ -156,6 +157,7 @@ class FakeProcessor:
         self.fail = False
         self.error = None
         self.calls = 0
+        self.relations = None
 
     async def prepare(self, *, content, filename, document_id, version, content_hash, operation_id):
         self.calls += 1
@@ -166,7 +168,7 @@ class FakeProcessor:
         return PreparedDocument(
             chunks=[DocumentChunk("one", "legacy", 0, DocType.TEXT, {"source": filename})],
             entities=[Entity("Alice", "Person", "Owner")],
-            relations=[Relation("Alice", "owns", "Project", 0.9)],
+            relations=self.relations or [Relation("Alice", "owns", "Project", 0.9)],
         )
 
 
@@ -232,10 +234,20 @@ class FakeVector(FakeVersionStore):
 class FakeGraph(FakeVersionStore):
     def __init__(self, events):
         super().__init__("graph", events)
+        self.drop_evidence = False
+        self.duplicate_evidence = False
+        self.evidence = {}
 
     async def stage_document_version(self, document_id, version, content_hash, source, entities, relations):
         await super().stage_document_version(document_id, version)
-        self.evidence = {key: [{"evidence_key": f"e:{key[0]}:{key[1]}"}] for key in self.staged}
+        keys=sorted({KnowledgeGraphService.evidence_key_for_relation(document_id, version, relation) for relation in relations})
+        if self.drop_evidence:
+            keys=keys[1:]
+        self.evidence[(document_id, version)] = [
+            {"evidence_key": key, "status": "processing", "is_current": False} for key in keys
+        ]
+        if self.duplicate_evidence and self.evidence[(document_id, version)]:
+            self.evidence[(document_id, version)].append(dict(self.evidence[(document_id, version)][0]))
 
     async def list_document_evidence(self, document_id, version):
         return self.evidence.get((document_id, version), [])
@@ -307,6 +319,41 @@ async def test_create_success_follows_strict_saga_order(setup):
     assert result["status"] == "succeeded"
     assert events == ["vector.stage", "graph.stage", "vector.activate:1", "graph.activate:1"]
     assert registry.find("doc-1")["current_version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_graph_stage_aggregates_property_variants_by_evidence_identity(setup):
+    coordinator, _, journal, _, _, processor, _ = setup
+    processor.relations=[
+        Relation("Alice", "owns", "Project", 0.9, {"source_span":"a"}),
+        Relation("Alice", "owns", "Project", 0.8, {"source_span":"b"}),
+    ]
+    await coordinator.create_document_version(filename="d04-shape.txt", content=b"shape", operation_id="d04-shape")
+    record=journal.get("d04-shape")
+    assert record["prepared_relation_count"] == 2
+    assert record["graph_evidence_identity_count"] == 1
+    assert len(record["graph_evidence_keys"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_graph_stage_missing_evidence_identity_fails_closed_and_compensates(setup):
+    coordinator, registry, _, vector, graph, processor, _ = setup
+    processor.relations=[Relation("Alice", "owns", "Project", 0.9)]
+    graph.drop_evidence=True
+    with pytest.raises(RuntimeError, match="evidence identities"):
+        await coordinator.create_document_version(filename="missing.txt", content=b"missing")
+    assert registry.find("doc-1")["status"] == "failed"
+    assert "doc-1" not in graph.current and "doc-1" not in vector.current
+
+
+@pytest.mark.asyncio
+async def test_graph_stage_duplicate_evidence_identity_fails_closed_and_compensates(setup):
+    coordinator, registry, _, vector, graph, _, _ = setup
+    graph.duplicate_evidence = True
+    with pytest.raises(RuntimeError, match="evidence identities"):
+        await coordinator.create_document_version(filename="duplicate.txt", content=b"duplicate")
+    assert registry.find("doc-1")["status"] == "failed"
+    assert "doc-1" not in graph.current and "doc-1" not in vector.current
 
 
 @pytest.mark.asyncio
@@ -729,7 +776,7 @@ async def test_operation_journal_records_vector_and_graph_locators(setup):
     await coordinator.create_document_version(filename="a.txt", content=b"new", operation_id="op-1")
     record = journal.get("op-1")
     assert record["vector_ids"] == ["doc-1:v1:c0"]
-    assert record["graph_evidence_keys"] == ["e:doc-1:1"]
+    assert record["graph_evidence_keys"] == [KnowledgeGraphService.evidence_key_for_relation("doc-1", 1, Relation("Alice", "owns", "Project", 0.9))]
 
 
 @pytest.mark.asyncio

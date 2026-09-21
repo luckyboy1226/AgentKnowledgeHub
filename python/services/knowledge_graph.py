@@ -69,6 +69,21 @@ class KnowledgeGraphService:
         )
         return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
+    @classmethod
+    def evidence_key_for_relation(cls, document_id: str, version: int, relation: Relation) -> str:
+        """Return the graph's durable identity for a prepared relation.
+
+        Relation properties can legitimately differ after extraction
+        normalization, but this graph stores one asserted fact per provenance
+        subject/predicate/object identity.  Callers must validate this key set,
+        never a raw prepared-relation count.
+        """
+        semantic = canonicalize_relation(
+            relation.relation,
+            raw_predicate=(relation.properties or {}).get("raw_predicate", relation.relation),
+        )
+        return cls.evidence_key(document_id, version, relation.head, semantic.predicate, relation.tail)
+
     @staticmethod
     def safe_relationship_type(predicate: str) -> str:
         """Return a reviewed relationship identifier, never arbitrary user text."""
@@ -249,13 +264,19 @@ class KnowledgeGraphService:
             predicate = semantic.predicate
             raw_predicate = semantic.raw_predicate
             relationship_type = predicate
-            evidence_key = self.evidence_key(
-                document_id, version, relation.head, predicate, relation.tail
-            )
+            evidence_key = self.evidence_key_for_relation(document_id, version, relation)
             await tx.run(
                 f"""
-                MATCH (h:Entity {{name: $head}})
-                MATCH (t:Entity {{name: $tail}})
+                CALL {{
+                  MATCH (candidate:Entity {{name: $head}})
+                  WITH candidate ORDER BY elementId(candidate)
+                  RETURN candidate AS h LIMIT 1
+                }}
+                CALL {{
+                  MATCH (candidate:Entity {{name: $tail}})
+                  WITH candidate ORDER BY elementId(candidate)
+                  RETURN candidate AS t LIMIT 1
+                }}
                 MERGE (h)-[r:{relationship_type} {{evidence_key: $evidence_key}}]->(t)
                 ON CREATE SET r.document_id = $document_id, r.document_version = $version,
                   r.predicate = $predicate, r.raw_predicate = $raw_predicate,
@@ -276,7 +297,9 @@ class KnowledgeGraphService:
                 source=source,
                 now=now,
             )
-        return {"mentions": len(mentioned), "evidence": len(relations)}
+        return {"mentions": len(mentioned), "evidence": len({
+            self.evidence_key_for_relation(document_id, version, relation) for relation in relations
+        })}
 
     @staticmethod
     async def _merge_entity_and_mention(

@@ -23,12 +23,16 @@ class HybridRetrievalV2RealRuntime:
     """Lazy composition point for Coordinator, BM25, HybridRetrieverV2, RRF and ContextBuilderV2.
     Factories are injected so constructor cannot allocate clients or invoke providers.
     """
-    def __init__(self, *, coordinator_factory:Any, services_factory:Any, plan_factory:Any, production_adapter_factory:Any|None=None, embedding_snapshot:Any|None=None, run_id:str|None=None, embedding_identity:dict[str,Any]|None=None, query_plans_hash:str|None=None):
-        self._coordinator_factory=coordinator_factory; self._services_factory=services_factory; self._plan_factory=plan_factory; self._production_adapter_factory=production_adapter_factory; self._embedding_snapshot=embedding_snapshot; self._run_id=run_id; self._embedding_identity=embedding_identity; self._query_plans_hash=query_plans_hash; self.audit=RuntimeCallAudit(); self.last_ingestion_operation=None
+    def __init__(self, *, coordinator_factory:Any, services_factory:Any, plan_factory:Any, production_adapter_factory:Any|None=None, embedding_snapshot:Any|None=None, run_id:str|None=None, embedding_identity:dict[str,Any]|None=None, query_plans_hash:str|None=None, ingestion_namespace:str='evaluation'):
+        self._coordinator_factory=coordinator_factory; self._services_factory=services_factory; self._plan_factory=plan_factory; self._production_adapter_factory=production_adapter_factory; self._embedding_snapshot=embedding_snapshot; self._run_id=run_id; self._embedding_identity=embedding_identity; self._query_plans_hash=query_plans_hash; self._ingestion_namespace=str(ingestion_namespace); self.audit=RuntimeCallAudit(); self.last_ingestion_operation=None
     async def ingest(self, document, run_id):
         operation_id=str(uuid.uuid4()); self.last_ingestion_operation={'logical_key':document.get('id'),'operation_id':operation_id}
-        coordinator=self._coordinator_factory(); result=await coordinator.create_document_version(filename=document['filename'],content=document['content'].encode() if isinstance(document['content'],str) else document['content'],logical_key=document['id'],namespace='evaluation',operation_id=operation_id)
+        coordinator=self._coordinator_factory(); result=await coordinator.create_document_version(filename=document['filename'],content=document['content'].encode() if isinstance(document['content'],str) else document['content'],logical_key=document['id'],namespace=self._ingestion_namespace,operation_id=operation_id)
         return {'document_id':result['document_id'],'version':result.get('version'),'status':result.get('status'),'content_hash':result.get('content_hash'),'source':document['filename'],'operation_id':operation_id}
+    async def retry_failed_create_version(self, *, document_id, version, filename, content, failed_operation_id):
+        operation_id=str(uuid.uuid4()); self.last_ingestion_operation={'logical_key':'D04','operation_id':operation_id}
+        result=await self._coordinator_factory().retry_failed_create_version(document_id=document_id,version=int(version),filename=filename,content=content,failed_operation_id=failed_operation_id,recovery_operation_id=operation_id)
+        return {'document_id':result['document_id'],'version':result.get('version'),'status':result.get('status'),'content_hash':result.get('content_hash'),'source':filename,'operation_id':operation_id}
     async def verify_document(self,document_id):
         s=self._services_factory(); return await s.verify_document(document_id)
     async def verify_scope(self,allow):
@@ -114,9 +118,26 @@ class RealRuntimeStorageVerifier:
             and row.get("content_hash") == version_row.get("content_hash")
             for row in graph_rows
         )
+        children = [row for row in catalog if row.get("kind") == "child"]
+        bm25_current = bool(children) and all(self.bm25._eligible(row) for row in children)
+        parents = sorted((row for row in catalog if row.get("kind") == "parent"),
+                         key=lambda row: (int(row.get("parent_index") or 0), str(row.get("parent_chunk_id") or "")))
+        parent_child_stats = {
+            "parent_count": len(parents), "child_count": len(children),
+            "parents": [{
+                "parent_chunk_id": str(parent.get("parent_chunk_id") or ""),
+                "estimated_token_count": int(parent.get("estimated_token_count") or 0),
+                "child_count": sum(1 for child in children if child.get("parent_chunk_id") == parent.get("parent_chunk_id")),
+                "child_estimated_token_counts": [int(child.get("estimated_token_count") or 0) for child in sorted(
+                    (child for child in children if child.get("parent_chunk_id") == parent.get("parent_chunk_id")),
+                    key=lambda child: int(child.get("child_index_in_parent") or 0),
+                )],
+            } for parent in parents],
+        }
         return {"ready": ready, "current": ready, "parents_ready": parents_ready,
                 "children_ready": children_ready, "vectors_current": vectors_current,
-                "graph_provenance_current": graph_provenance_current}
+                "graph_provenance_current": graph_provenance_current, "bm25_current": bm25_current,
+                "parent_child_stats": parent_child_stats}
 
     async def verify_scope(self, allow: frozenset[str]) -> dict[str, bool]:
         if not allow:
@@ -192,7 +213,7 @@ class RealRuntimeStorageVerifier:
                 "status": "ready"}
 
 
-def build_hosted_real_runtime(host: Any, *, trace_run_id: str = 'phase-g', embedding_snapshot:Any|None=None, query_plans_hash:str|None=None) -> HybridRetrievalV2RealRuntime:
+def build_hosted_real_runtime(host: Any, *, trace_run_id: str = 'phase-g', embedding_snapshot:Any|None=None, query_plans_hash:str|None=None, ingestion_namespace:str='evaluation') -> HybridRetrievalV2RealRuntime:
     """Bind a real runtime only to dependencies opened by an authorized host."""
     components = host.components
     production = HybridRetrievalV2ProductionAdapter(
@@ -212,7 +233,7 @@ def build_hosted_real_runtime(host: Any, *, trace_run_id: str = 'phase-g', embed
         production_adapter_factory=lambda: production,
         embedding_snapshot=embedding_snapshot, run_id=snapshot_run_id,
         embedding_identity={"provider":host.settings.embedding_config.provider,"model":host.settings.embedding_config.model,"dimension":host.settings.embedding_dimensions,"embedding_space_id":host.settings.resolved_embedding_space_id},
-        query_plans_hash=query_plans_hash,
+        query_plans_hash=query_plans_hash, ingestion_namespace=ingestion_namespace,
     )
 
 

@@ -142,6 +142,16 @@ async def test_evidence_relationship_is_merged_by_stable_key(graph):
 
 
 @pytest.mark.asyncio
+async def test_evidence_stage_selects_one_endpoint_for_duplicate_entity_names(graph):
+    await graph.stage_document_version("doc-a", 1, "hash", "a.txt", entities(), relations())
+    text = queries(graph)
+    assert text.count("RETURN candidate AS h LIMIT 1") == 1
+    assert text.count("RETURN candidate AS t LIMIT 1") == 1
+    assert text.count("ORDER BY elementId(candidate)") == 2
+    assert "RETURN DISTINCT r.evidence_key" not in text
+
+
+@pytest.mark.asyncio
 async def test_evidence_properties_include_document_and_version(graph):
     await graph.stage_document_version("doc-a", 2, "hash", "a.txt", entities(), relations())
     stage_params = params(graph)
