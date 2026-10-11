@@ -58,6 +58,9 @@ class FakeRegistry:
     def find(self, document_id):
         return deepcopy(self.documents.get(document_id))
 
+    def versions_for(self, document_id):
+        return deepcopy(self.versions.get(document_id, []))
+
     def transition(self, document_id, version, target, *, chunk_count=0, error=None):
         if target == "ready" and self.fail_ready:
             raise RuntimeError("mongo ready failure")
@@ -222,6 +225,7 @@ class FakeVersionStore:
 class FakeVector(FakeVersionStore):
     def __init__(self, events):
         super().__init__("vector", events)
+        self.ids = {}
 
     async def stage_document_version(self, document_id, version, chunks, content_hash, **kwargs):
         await super().stage_document_version(document_id, version)
@@ -229,6 +233,9 @@ class FakeVector(FakeVersionStore):
 
     def list_document_vector_ids(self, document_id, version):
         return self.ids.get((document_id, version), [])
+
+    def count_document_version(self, document_id, version):
+        return len(self.list_document_vector_ids(document_id, version))
 
 
 class FakeGraph(FakeVersionStore):
@@ -251,6 +258,17 @@ class FakeGraph(FakeVersionStore):
 
     async def list_document_evidence(self, document_id, version):
         return self.evidence.get((document_id, version), [])
+
+    async def list_document_versions(self, document_id, version):
+        if (document_id, version) not in self.staged:
+            return []
+        return [{"document_id": document_id, "document_version": version,
+                 "status": "processing", "is_current": False}]
+
+    async def delete_document_version(self, document_id, version):
+        result = await super().delete_document_version(document_id, version)
+        self.evidence.pop((document_id, version), None)
+        return result
 
 
 class FakeChunkCatalog(FakeVersionStore):
@@ -344,6 +362,7 @@ async def test_graph_stage_missing_evidence_identity_fails_closed_and_compensate
         await coordinator.create_document_version(filename="missing.txt", content=b"missing")
     assert registry.find("doc-1")["status"] == "failed"
     assert "doc-1" not in graph.current and "doc-1" not in vector.current
+    assert ("doc-1", 1) not in graph.staged
 
 
 @pytest.mark.asyncio
@@ -354,6 +373,20 @@ async def test_graph_stage_duplicate_evidence_identity_fails_closed_and_compensa
         await coordinator.create_document_version(filename="duplicate.txt", content=b"duplicate")
     assert registry.find("doc-1")["status"] == "failed"
     assert "doc-1" not in graph.current and "doc-1" not in vector.current
+    assert ("doc-1", 1) not in graph.staged
+
+
+@pytest.mark.asyncio
+async def test_graph_commit_marker_precedes_readback_and_drives_exact_compensation(setup):
+    coordinator, _, journal, _, graph, _, events = setup
+    graph.drop_evidence = True
+    with pytest.raises(RuntimeError, match="evidence identities"):
+        await coordinator.create_document_version(filename="commit-gap.txt", content=b"gap", operation_id="gap-op")
+    operation = journal.get("gap-op")
+    assert "graph_stage_committed" in operation["completed_steps"]
+    assert "graph_staged" not in operation["completed_steps"]
+    assert "graph_stage_deleted" in operation["compensation_steps"]
+    assert events.count("graph.delete_version:1") == 1
 
 
 @pytest.mark.asyncio
@@ -515,6 +548,81 @@ async def test_graph_stage_failure_rolls_back_only_vector_stage(setup):
     assert "vector.delete_version:1" in events
     assert "graph.delete_version:1" not in events
     assert "vector_stage_deleted" in journal.get("op-1")["compensation_steps"]
+    assert "graph_stage_committed" not in journal.get("op-1")["completed_steps"]
+
+
+@pytest.mark.asyncio
+async def test_legacy_failed_graph_stage_reconciliation_is_exact_and_idempotent(setup):
+    coordinator, registry, journal, vector, graph, processor, events = setup
+    document, version_row, _ = registry.reserve("d04.txt", b"d04")
+    registry.transition(document["document_id"], version_row["version"], "failed", error="legacy")
+    failed = coordinator._operation_record("failed-op", "create", document["document_id"], 1, None)
+    failed["status"] = "failed"
+    journal.create(failed)
+    relations = [Relation("Alice", "owns", "Project", 0.9)]
+    await graph.stage_document_version(document["document_id"], 1, "hash", "d04.txt", [], relations)
+    keys = sorted(row["evidence_key"] for row in await graph.list_document_evidence(document["document_id"], 1))
+    evidence_hash = hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()
+
+    result = await coordinator.reconcile_failed_graph_stage(
+        document_id=document["document_id"], version=1, failed_operation_id="failed-op",
+        expected_evidence_keys=keys, expected_evidence_hash=evidence_hash,
+        reconciliation_operation_id="reconcile-op",
+    )
+    again = await coordinator.reconcile_failed_graph_stage(
+        document_id=document["document_id"], version=1, failed_operation_id="failed-op",
+        expected_evidence_keys=keys, expected_evidence_hash=evidence_hash,
+        reconciliation_operation_id="reconcile-op",
+    )
+    assert result["status"] == "succeeded" and again["changed"] is False
+    assert events.count("graph.delete_version:1") == 1
+    assert registry.find(document["document_id"])["status"] == "failed"
+    assert registry.find(document["document_id"])["current_version"] is None
+    assert await graph.list_document_versions(document["document_id"], 1) == []
+    assert vector.count_document_version(document["document_id"], 1) == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_graph_reconciliation_rejects_identity_change_without_delete(setup):
+    coordinator, registry, journal, _, graph, _, events = setup
+    document, version_row, _ = registry.reserve("d04.txt", b"d04")
+    registry.transition(document["document_id"], version_row["version"], "failed", error="legacy")
+    failed = coordinator._operation_record("failed-op", "create", document["document_id"], 1, None)
+    failed["status"] = "failed"
+    journal.create(failed)
+    relation = Relation("Alice", "owns", "Project", 0.9)
+    await graph.stage_document_version(document["document_id"], 1, "hash", "d04.txt", [], [relation])
+    key = KnowledgeGraphService.evidence_key_for_relation(document["document_id"], 1, relation)
+    with pytest.raises(OperationIdentityConflictError, match="hash"):
+        await coordinator.reconcile_failed_graph_stage(
+            document_id=document["document_id"], version=1, failed_operation_id="failed-op",
+            expected_evidence_keys=[key], expected_evidence_hash="0" * 64,
+            reconciliation_operation_id="reconcile-op",
+        )
+    assert "graph.delete_version:1" not in events
+
+
+@pytest.mark.asyncio
+async def test_legacy_graph_reconciliation_delete_failure_needs_reconciliation(setup):
+    coordinator, registry, journal, _, graph, _, _ = setup
+    document, version_row, _ = registry.reserve("d04.txt", b"d04")
+    registry.transition(document["document_id"], version_row["version"], "failed", error="legacy")
+    failed = coordinator._operation_record("failed-op", "create", document["document_id"], 1, None)
+    failed["status"] = "failed"
+    journal.create(failed)
+    relation = Relation("Alice", "owns", "Project", 0.9)
+    await graph.stage_document_version(document["document_id"], 1, "hash", "d04.txt", [], [relation])
+    keys = [row["evidence_key"] for row in await graph.list_document_evidence(document["document_id"], 1)]
+    evidence_hash = hashlib.sha256("\n".join(sorted(keys)).encode("utf-8")).hexdigest()
+    graph.fail.add("delete_version")
+    result = await coordinator.reconcile_failed_graph_stage(
+        document_id=document["document_id"], version=1, failed_operation_id="failed-op",
+        expected_evidence_keys=keys, expected_evidence_hash=evidence_hash,
+        reconciliation_operation_id="reconcile-op",
+    )
+    assert result["status"] == "needs_reconciliation"
+    assert (document["document_id"], 1) in graph.staged
+    assert registry.find(document["document_id"])["status"] == "failed"
 
 
 @pytest.mark.asyncio

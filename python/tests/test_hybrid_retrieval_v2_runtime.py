@@ -51,6 +51,7 @@ def test_verifier_requires_explicit_registry_and_verifies_complete_components():
   def _version_records(self,document_id,version): return [('v',{'document_id':document_id,'document_version':version,'status':'ready','is_current':True})]
  class Graph:
   async def execute_cypher(self,*_): return [{'status':'ready','is_current':True,'content_hash':'hash'}]
+  async def list_document_evidence(self,*_): return [{'evidence_key':'edge-1','status':'ready','is_current':True}]
  class BM25:
   @staticmethod
   def _eligible(_): return True
@@ -70,4 +71,76 @@ def test_query_plan_only_uses_injected_planner_and_counts_two_llm_calls():
   runtime=HybridRetrievalV2RealRuntime(coordinator_factory=lambda: (_ for _ in ()).throw(AssertionError('coordinator')),services_factory=lambda: (_ for _ in ()).throw(AssertionError('storage')),plan_factory=Planner)
   plan=await runtime.build_query_plan({'question_id':'Q1','question':'only planning'},'run')
   assert plan['queries']==['only planning'] and runtime.audit.query_plan_llm_calls==2
+ asyncio.run(run())
+
+
+def test_retry_bridge_preserves_graph_evidence_identity_set():
+ class RetryCoordinator:
+  async def retry_failed_create_version(self,**kwargs):
+   return {'document_id':kwargs['document_id'],'version':kwargs['version'],'status':'succeeded',
+           'content_hash':'hash','graph_evidence_keys':['edge-b','edge-a']}
+ async def run():
+  runtime=HybridRetrievalV2RealRuntime(coordinator_factory=RetryCoordinator,services_factory=Services,plan_factory=Plan)
+  result=await runtime.retry_failed_create_version(document_id='doc',version=1,filename='a.txt',content=b'x',failed_operation_id='failed')
+  assert result['graph_evidence_keys']==['edge-b','edge-a']
+ asyncio.run(run())
+
+
+def test_failed_retry_preflight_requires_exact_empty_failed_identity():
+ class Operations:
+  def find_one(self,query,*_):
+   return {'operation_id':query['operation_id'],'operation_type':'create','status':'failed','document_id':'doc','version':1}
+  def find(self,*_): return []
+ class Locks:
+  def find_one(self,*_): return None
+ class Registry:
+  operations=Operations(); operation_locks=Locks()
+  def find(self,_): return {'document_id':'doc','status':'failed','current_version':None}
+  def versions_for(self,_): return [{'document_id':'doc','version':1,'status':'failed','is_current':False}]
+ class EmptyCollection:
+  def find(self,*_): return []
+ class Chunks: collection=EmptyCollection()
+ class Vectors:
+  def _version_records(self,*_): return []
+ class Graph:
+  async def execute_cypher(self,*_): return []
+  async def list_document_evidence(self,*_): return []
+ class BM25: pass
+ async def run():
+  verifier=RealRuntimeStorageVerifier({'DocumentRegistry':Registry(),'ChunkRepository':Chunks(),
+   'VectorStoreService':Vectors(),'KnowledgeGraphService':Graph(),'BM25Retriever':BM25()})
+  result=await verifier.verify_failed_retry_preconditions(document_id='doc',version=1,failed_operation_id='op')
+  assert result['passed'] is True and all(result['checks'].values())
+ asyncio.run(run())
+
+
+def test_graph_reconciliation_inspection_binds_exact_processing_evidence():
+ class Operations:
+  def find_one(self,query,*_):
+   return {'operation_id':query['operation_id'],'operation_type':'create','status':'failed','document_id':'doc','version':1}
+  def find(self,*_): return []
+ class Locks:
+  def find_one(self,*_): return None
+ class Registry:
+  operations=Operations(); operation_locks=Locks()
+  def find(self,_): return {'document_id':'doc','status':'failed','current_version':None}
+  def versions_for(self,_): return [{'document_id':'doc','version':1,'status':'failed','is_current':False}]
+ class Chunks:
+  def count_version(self,*_): return 0
+ class Vectors:
+  def count_document_version(self,*_): return 0
+ class Graph:
+  async def list_document_versions(self,*_):
+   return [{'document_id':'doc','document_version':1,'status':'processing','is_current':False}]
+  async def list_document_evidence(self,*_):
+   return [{'evidence_key':'edge-b','status':'processing','is_current':False},
+           {'evidence_key':'edge-a','status':'processing','is_current':False}]
+ class BM25: pass
+ async def run():
+  verifier=RealRuntimeStorageVerifier({'DocumentRegistry':Registry(),'ChunkRepository':Chunks(),
+   'VectorStoreService':Vectors(),'KnowledgeGraphService':Graph(),'BM25Retriever':BM25()})
+  result=await verifier.inspect_failed_graph_reconciliation(document_id='doc',version=1,failed_operation_id='op')
+  assert result['passed'] is True
+  assert result['graph_evidence_keys']==['edge-a','edge-b']
+  assert result['graph_evidence_identity_hash']==__import__('hashlib').sha256(b'edge-a\nedge-b').hexdigest()
  asyncio.run(run())

@@ -32,6 +32,11 @@ def _prepared_graph_evidence_keys(document_id: str, version: int, relations: lis
     return {KnowledgeGraphService.evidence_key_for_relation(document_id, version, relation) for relation in relations}
 
 
+def _graph_evidence_identity_hash(evidence_keys: list[str] | set[str]) -> str:
+    """Hash a stable, content-free graph evidence identity set."""
+    return hashlib.sha256("\n".join(sorted(str(key) for key in evidence_keys)).encode("utf-8")).hexdigest()
+
+
 class DocumentProcessor(Protocol):
     async def prepare(
         self,
@@ -383,6 +388,113 @@ class DocumentUpdateCoordinator:
             namespace=document.get("namespace"), logical_key=document.get("logical_key"),
         )
 
+    async def reconcile_failed_graph_stage(
+        self,
+        *,
+        document_id: str,
+        version: int,
+        failed_operation_id: str,
+        expected_evidence_keys: list[str],
+        expected_evidence_hash: str,
+        reconciliation_operation_id: str,
+    ) -> dict[str, Any]:
+        """Delete one legacy committed graph stage that its Saga did not acknowledge.
+
+        This deliberately does not retry ingestion or mutate registry/catalog/vector
+        state.  Every identity is checked again while holding the document lease.
+        """
+        document_id, version = str(document_id), int(version)
+        operation_id = str(reconciliation_operation_id)
+        expected_keys = sorted(str(key) for key in expected_evidence_keys)
+        if not expected_keys or len(expected_keys) != len(set(expected_keys)):
+            raise OperationIdentityConflictError("Expected graph evidence identities are invalid")
+        if _graph_evidence_identity_hash(expected_keys) != str(expected_evidence_hash):
+            raise OperationIdentityConflictError("Expected graph evidence hash does not match identities")
+
+        existing = self.journal.get(operation_id)
+        if existing:
+            self._assert_same_operation(
+                existing,
+                operation_type="reconcile_failed_graph_stage",
+                document_id=document_id,
+            )
+            if (int(existing.get("version") or 0) != version
+                    or str(existing.get("reconciles_operation_id") or "") != str(failed_operation_id)
+                    or str(existing.get("graph_evidence_identity_hash") or "") != str(expected_evidence_hash)):
+                raise OperationIdentityConflictError("Reconciliation operation identity changed")
+            if existing.get("status") == "succeeded":
+                return {**existing, "changed": False}
+
+        if not self.journal.acquire_lock(document_id, operation_id, self.lease_seconds):
+            raise OperationBusyError("Another document operation is active")
+        try:
+            document = self.registry.find(document_id)
+            versions = self.registry.versions_for(document_id)
+            version_row = next((row for row in versions if int(row.get("version") or 0) == version), None)
+            failed = self.journal.get(str(failed_operation_id))
+            if (not document or document.get("status") != "failed" or document.get("current_version") is not None
+                    or len(versions) != 1 or version != 1 or not version_row
+                    or version_row.get("status") != "failed" or version_row.get("is_current") is True):
+                raise OperationIdentityConflictError("Registry is not the exact failed version eligible for reconciliation")
+            if (not failed or failed.get("status") != "failed" or failed.get("operation_type") != "create"
+                    or str(failed.get("document_id")) != document_id
+                    or int(failed.get("version") or 0) != version):
+                raise OperationIdentityConflictError("Original failed operation identity changed")
+            if self.chunk_repository is not None and self.chunk_repository.count_version(document_id, version):
+                raise OperationIdentityConflictError("Chunk catalog is not empty")
+            if self.vector_store.count_document_version(document_id, version):
+                raise OperationIdentityConflictError("Vector stage is not empty")
+
+            graph_versions = await self.knowledge_graph.list_document_versions(document_id, version)
+            evidence = await self.knowledge_graph.list_document_evidence(document_id, version)
+            observed_keys = [str(row.get("evidence_key") or "") for row in evidence]
+            if (len(graph_versions) != 1
+                    or graph_versions[0].get("status") != "processing"
+                    or graph_versions[0].get("is_current") is not False
+                    or not all(observed_keys)
+                    or len(observed_keys) != len(set(observed_keys))
+                    or sorted(observed_keys) != expected_keys
+                    or _graph_evidence_identity_hash(observed_keys) != str(expected_evidence_hash)
+                    or any(row.get("status") != "processing" or row.get("is_current") is not False for row in evidence)):
+                raise OperationIdentityConflictError("Legacy graph stage no longer matches the frozen reconciliation identity")
+
+            if not existing:
+                record = self._operation_record(
+                    operation_id, "reconcile_failed_graph_stage", document_id, version, None
+                )
+                record.update({
+                    "completed_steps": [],
+                    "reconciles_operation_id": str(failed_operation_id),
+                    "graph_evidence_identity_hash": str(expected_evidence_hash),
+                    "graph_evidence_count": len(expected_keys),
+                })
+                self.journal.create(record)
+            self.journal.complete_step(operation_id, "reconciliation_guard_verified")
+            try:
+                await self.knowledge_graph.delete_document_version(document_id, version)
+                self.journal.complete_step(operation_id, "graph_stage_deleted")
+                remaining_versions = await self.knowledge_graph.list_document_versions(document_id, version)
+                remaining_evidence = await self.knowledge_graph.list_document_evidence(document_id, version)
+                if remaining_versions or remaining_evidence:
+                    raise RuntimeError("Exact graph stage deletion did not remove all bound provenance")
+                return self.journal.update(
+                    operation_id,
+                    status="succeeded",
+                    error_summary=None,
+                    graph_versions_after=0,
+                    graph_evidence_after=0,
+                )
+            except Exception as error:
+                return self.journal.update(
+                    operation_id,
+                    status="needs_reconciliation",
+                    error_summary=safe_error(error),
+                )
+        finally:
+            operation = self.journal.get(operation_id)
+            if operation is None or operation.get("status") in {"succeeded", "failed", "needs_reconciliation"}:
+                self.journal.release_lock(document_id, operation_id)
+
     def _record_unchanged(
         self,
         operation_id: str | None,
@@ -509,6 +621,10 @@ class DocumentUpdateCoordinator:
                 prepared.relations,
                 **graph_stage_kwargs,
             )
+            # A successful return means the Neo4j transaction committed.  Record
+            # that durable boundary before performing the read-back assertion so
+            # compensation cannot miss a committed-but-unacknowledged stage.
+            self.journal.complete_step(operation_id, "graph_stage_committed")
             evidence = await self.knowledge_graph.list_document_evidence(document_id, version)
             expected_evidence_keys = _prepared_graph_evidence_keys(document_id, version, prepared.relations)
             evidence_keys = [str(row.get("evidence_key") or "") for row in evidence]
@@ -584,7 +700,7 @@ class DocumentUpdateCoordinator:
             await compensate("graph_deactivated", lambda: self.knowledge_graph.deactivate_document_version(document_id, version))
         if "vector_activated" in completed:
             await compensate("vector_deactivated", lambda: self.vector_store.deactivate_document_version(document_id, version))
-        if "graph_staged" in completed:
+        if {"graph_stage_committed", "graph_staged"} & completed:
             await compensate("graph_stage_deleted", lambda: self.knowledge_graph.delete_document_version(document_id, version))
         if "vector_staged" in completed:
             await compensate("vector_stage_deleted", lambda: self.vector_store.delete_document_version(document_id, version))

@@ -6,7 +6,7 @@ from services.hybrid_retrieval_v2_real_evaluation import ControlledRealEvaluatio
 class Fake:
     def __init__(self): self.ingests=0; self.plans=0; self.calls=[]
     async def ingest(self,d,r): self.ingests+=1; return {'document_id':str(uuid.uuid5(uuid.NAMESPACE_URL,d['id'])),'version':1,'content_hash':'x'}
-    async def verify_document(self,id): return {k:True for k in ('ready','current','parents_ready','children_ready','vectors_current','graph_provenance_current')}
+    async def verify_document(self,id): return {k:True for k in ('ready','current','parents_ready','children_ready','vectors_current','graph_provenance_current','graph_evidence_current')}
     async def verify_scope(self,a): return {k:True for k in ('mongo','chroma','neo4j','bm25')}
     async def build_query_plan(self,q,r): self.plans+=1; return {'question_id':q['question_id'],'queries':[q['question_id']],'entities':[],'keywords':[],'intent':'factoid'}
     async def evaluate(self,p,v,a,**kw):
@@ -47,7 +47,7 @@ def test_scope_is_fail_closed_and_graph_trace_is_only_graph_variants(tmp_path):
 def test_ingestion_failure_never_emits_allowlist_or_final_results(tmp_path):
  class Incomplete(Fake):
   async def verify_document(self, _):
-   return {key: False for key in ('ready','current','parents_ready','children_ready','vectors_current','graph_provenance_current')}
+   return {key: False for key in ('ready','current','parents_ready','children_ready','vectors_current','graph_provenance_current','graph_evidence_current')}
  async def run():
   r=make(tmp_path); r.prepare(git_commit='abc',embedding={'dimension':1024})
   with pytest.raises(ValueError, match='ingestion_incomplete'):

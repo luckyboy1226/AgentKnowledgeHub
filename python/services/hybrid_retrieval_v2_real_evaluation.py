@@ -232,7 +232,7 @@ class ControlledRealEvaluationRunner:
                 document_id = str(row.get("document_id") or "")
                 if not _uuid(document_id): raise ValueError("invalid_document_uuid")
                 verified = await adapter.verify_document(document_id)
-                required=("ready", "current", "parents_ready", "children_ready", "vectors_current", "graph_provenance_current")
+                required=("ready", "current", "parents_ready", "children_ready", "vectors_current", "graph_provenance_current", "graph_evidence_current")
                 if pc_expected:
                     required=(*required,"bm25_current")
                 if not all(verified.get(key) is True for key in required):

@@ -1,0 +1,2890 @@
+{
+  "benchmark_id": "flood_emergency_parent_child_longdoc",
+  "benchmark_version": "3.0.0-final",
+  "source_benchmark": "flood_emergency_20docs_60q_longdoc",
+  "question_count": 60,
+  "answerable_count": 48,
+  "abstention_count": 12,
+  "designed_case_distribution": {
+    "child_sufficient": 15,
+    "same_parent_multi_child": 15,
+    "cross_parent": 6,
+    "cross_document": 12,
+    "abstention": 12
+  },
+  "chunking_validation_defaults": {
+    "parent_target_tokens": 1000,
+    "parent_max_tokens": 1400,
+    "child_target_tokens": 250,
+    "child_overlap_tokens": 50,
+    "token_estimator": "UnicodeTokenEstimator"
+  },
+  "questions": [
+    {
+      "question_id": "Q01",
+      "category": "single_hop",
+      "question": "本轮暴雨红色预警由谁在何时发布？",
+      "answerable": true,
+      "reference_answer": "海州市气象局于2026年7月22日14时00分发布。",
+      "required_facts": [
+        "海州市气象局于14时发布红色预警"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q01-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "2026年7月22日14时00分，海州市气象局发布暴雨红色预警信号，预警编号为M-2026-0722-R。",
+          "start_char": 502,
+          "end_char": 555,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q02",
+      "category": "single_hop",
+      "question": "海州市7月22日15时启动了哪一级防汛响应？",
+      "answerable": true,
+      "reference_answer": "防汛Ⅱ级应急响应。",
+      "required_facts": [
+        "15时启动Ⅱ级响应"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q02-E01",
+          "document_id": "D03",
+          "source_filename": "D03_city_flood_response_plan.txt",
+          "evidence_text": "2026年7月22日15时00分，海州市防汛抗旱指挥部启动防汛Ⅱ级应急响应，响应事件编号为F-2026-0722-II。",
+          "start_char": 471,
+          "end_char": 531,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q03",
+      "category": "single_hop",
+      "question": "7月22日16时30分龙门站实测水位、警戒水位和保证水位分别是多少？",
+      "answerable": true,
+      "reference_answer": "实测27.8米，警戒27.5米，保证28.5米。",
+      "required_facts": [
+        "实测、警戒、保证水位"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q03-E01",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "2026年7月22日16时30分，龙门站实测水位为27.8米，警戒水位为27.5米，保证水位为28.5米。",
+          "start_char": 479,
+          "end_char": 532,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q04",
+      "category": "single_hop",
+      "question": "人民路下穿隧道积水达到多少厘米应启动道路封控？",
+      "answerable": true,
+      "reference_answer": "20厘米。",
+      "required_facts": [
+        "封控阈值20厘米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q04-E01",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "人民路下穿隧道积水深度达到20厘米时，应启动道路封控程序。",
+          "start_char": 462,
+          "end_char": 491,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q05",
+      "category": "single_hop",
+      "question": "滨江站受影响出入口的积水控制条件是什么？",
+      "answerable": true,
+      "reference_answer": "外部道路积水达到15厘米且仍有上涨趋势。",
+      "required_facts": [
+        "滨江站出入口控制条件"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q05-E01",
+          "document_id": "D08",
+          "source_filename": "D08_metro_binjing_station_flood_plan.txt",
+          "evidence_text": "滨江站外部道路积水达到15厘米且仍有上涨趋势时，运营单位应关闭受影响出入口。",
+          "start_char": 462,
+          "end_char": 500,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q06",
+      "category": "single_hop",
+      "question": "滨河社区集中安置点在哪里？",
+      "answerable": true,
+      "reference_answer": "海州市第三中学体育馆。",
+      "required_facts": [
+        "集中安置点为第三中学体育馆"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q06-E01",
+          "document_id": "D10",
+          "source_filename": "D10_binhe_community_evacuation_plan.txt",
+          "evidence_text": "滨河社区集中安置点为海州市第三中学体育馆。",
+          "start_char": 1613,
+          "end_char": 1634,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q07",
+      "category": "single_hop",
+      "question": "教育局通知要求哪些区域从16时起停止线下教学？",
+      "answerable": true,
+      "reference_answer": "江北区、临河区和高新区北部中小学及幼儿园自16时起停止线下教学。",
+      "required_facts": [
+        "三个区域16时起停课"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q07-E01",
+          "document_id": "D11",
+          "source_filename": "D11_school_suspension_notice.txt",
+          "evidence_text": "江北区、临河区和高新区北部中小学及幼儿园自16时起停止线下教学。",
+          "start_char": 840,
+          "end_char": 872,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q08",
+      "category": "single_hop",
+      "question": "7月22日15时一号仓可调拨哪些主要防汛物资？",
+      "answerable": true,
+      "reference_answer": "编织袋20000只、救生衣1200件、橡皮艇18艘、移动照明设备80套。",
+      "required_facts": [
+        "一号仓四类可调拨物资"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q08-E01",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "7月22日15时，一号仓可调拨编织袋20000只、救生衣1200件、橡皮艇18艘、移动照明设备80套。",
+          "start_char": 456,
+          "end_char": 507,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q09",
+      "category": "single_hop",
+      "question": "洪涝监测平台使用哪两种核心数据组件？",
+      "answerable": true,
+      "reference_answer": "PostGIS和Redis。",
+      "required_facts": [
+        "平台使用PostGIS和Redis"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q09-E01",
+          "document_id": "D17",
+          "source_filename": "D17_flood_monitoring_platform.txt",
+          "evidence_text": "平台使用PostGIS存储空间要素和点位信息，使用Redis缓存高频状态数据。",
+          "start_char": 2732,
+          "end_char": 2771,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q10",
+      "category": "single_hop",
+      "question": "本轮Ⅱ级响应后消防救援支队组建了多少支水域救援分队？",
+      "answerable": true,
+      "reference_answer": "6支。",
+      "required_facts": [
+        "组建6支分队"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q10-E01",
+          "document_id": "D16",
+          "source_filename": "D16_fire_rescue_deployment.txt",
+          "evidence_text": "海州市消防救援支队在Ⅱ级响应后组建6支水域救援分队。",
+          "start_char": 2699,
+          "end_char": 2725,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            },
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q11",
+      "category": "single_hop",
+      "question": "青云水库17时30分下泄流量调整到多少？",
+      "answerable": true,
+      "reference_answer": "350立方米/秒。",
+      "required_facts": [
+        "下泄350立方米/秒"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q11-E01",
+          "document_id": "D05",
+          "source_filename": "D05_qingyun_reservoir_dispatch.txt",
+          "evidence_text": "2026年7月22日17时30分，海州市水务局将青云水库下泄流量调整至350立方米/秒。",
+          "start_char": 460,
+          "end_char": 504,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q12",
+      "category": "single_hop",
+      "question": "本轮通信保障准备了多少辆应急通信车和多少台便携式发电机？",
+      "answerable": true,
+      "reference_answer": "12辆应急通信车和36台便携式发电机。",
+      "required_facts": [
+        "12辆通信车和36台发电机"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q12-E01",
+          "document_id": "D14",
+          "source_filename": "D14_telecom_emergency_plan.txt",
+          "evidence_text": "本次响应准备12辆应急通信车和36台便携式发电机。",
+          "start_char": 2677,
+          "end_char": 2702,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            },
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q13",
+      "category": "multi_hop",
+      "question": "海州市防汛指挥部办公室设在哪里、主任是谁，气象和水务部门分别负责哪类预警？",
+      "answerable": true,
+      "reference_answer": "办公室设在市应急管理局，主任为周岚；气象局负责气象预警，水务局负责水文预警。",
+      "required_facts": [
+        "办公室设在市应急管理局",
+        "周岚任主任",
+        "气象局负责气象预警",
+        "水务局负责水文预警"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q13-E01",
+          "document_id": "D01",
+          "source_filename": "D01_flood_command_structure.txt",
+          "evidence_text": "海州市防汛抗旱指挥部办公室设在海州市应急管理局，周岚担任办公室主任。",
+          "start_char": 489,
+          "end_char": 523,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0,
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q13-E02",
+          "document_id": "D01",
+          "source_filename": "D01_flood_command_structure.txt",
+          "evidence_text": "市气象局负责气象预警，市水务局负责水文预警，市住房城乡建设局负责城市排水，市公安交警支队负责道路封控。",
+          "start_char": 864,
+          "end_char": 915,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            2,
+            3
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q14",
+      "category": "multi_hop",
+      "question": "本轮红色预警何时由哪个部门发布，重点覆盖哪些区域？",
+      "answerable": true,
+      "reference_answer": "7月22日14时由海州市气象局发布，重点覆盖江北区、临河区和高新区北部。",
+      "required_facts": [
+        "14时气象局发布",
+        "重点覆盖三个区域"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q14-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "2026年7月22日14时00分，海州市气象局发布暴雨红色预警信号，预警编号为M-2026-0722-R。",
+          "start_char": 502,
+          "end_char": 555,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q14-E02",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "预警重点区域为江北区、临河区和高新区北部。",
+          "start_char": 895,
+          "end_char": 916,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q15",
+      "category": "multi_hop",
+      "question": "Ⅱ级响应何时启动，启动后对下穿隧道和易涝点有什么处置要求？",
+      "answerable": true,
+      "reference_answer": "7月22日15时启动Ⅱ级响应；住建部门重点巡查相关点位，达到封控阈值后通知公安交警实施管制。",
+      "required_facts": [
+        "15时启动Ⅱ级响应",
+        "Ⅱ级期间重点巡查并按阈值通知封控"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q15-E01",
+          "document_id": "D03",
+          "source_filename": "D03_city_flood_response_plan.txt",
+          "evidence_text": "2026年7月22日15时00分，海州市防汛抗旱指挥部启动防汛Ⅱ级应急响应，响应事件编号为F-2026-0722-II。",
+          "start_char": 471,
+          "end_char": 531,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q15-E02",
+          "document_id": "D03",
+          "source_filename": "D03_city_flood_response_plan.txt",
+          "evidence_text": "Ⅱ级响应期间，住建部门重点巡查下穿隧道、地下通道和历史易涝点，达到封控阈值时通知公安交警实施交通管制。",
+          "start_char": 871,
+          "end_char": 922,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q16",
+      "category": "multi_hop",
+      "question": "龙门站16时30分处于什么水位状态，预计洪峰何时、多少米？",
+      "answerable": true,
+      "reference_answer": "16时30分实测27.8米，已超27.5米警戒但低于28.5米保证水位；预计19时左右洪峰约28.2米。",
+      "required_facts": [
+        "16:30实测水位状态",
+        "19时预测峰值28.2米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q16-E01",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "2026年7月22日16时30分，龙门站实测水位为27.8米，警戒水位为27.5米，保证水位为28.5米。",
+          "start_char": 479,
+          "end_char": 532,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q16-E02",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "预计龙门站洪峰将在19时左右出现，预测峰值约28.2米。",
+          "start_char": 872,
+          "end_char": 900,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q17",
+      "category": "multi_hop",
+      "question": "人民路下穿隧道的封控和恢复通行条件分别是什么？",
+      "answerable": true,
+      "reference_answer": "积水达到20厘米启动封控；低于10厘米并连续30分钟且现场确认安全后恢复。",
+      "required_facts": [
+        "20厘米封控",
+        "低于10厘米持续30分钟后可恢复"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q17-E01",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "人民路下穿隧道积水深度达到20厘米时，应启动道路封控程序。",
+          "start_char": 462,
+          "end_char": 491,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q17-E02",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "当积水低于10厘米并连续保持30分钟，且排水和交警现场确认安全后，方可恢复通行。",
+          "start_char": 830,
+          "end_char": 870,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q18",
+      "category": "multi_hop",
+      "question": "滨河社区转移后到哪里集中安置，主要通过什么路线到达？",
+      "answerable": true,
+      "reference_answer": "集中安置到海州市第三中学体育馆，主要沿滨河路向西进入新华路后前往第三中学。",
+      "required_facts": [
+        "安置点第三中学体育馆",
+        "路线滨河路向西进入新华路"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q18-E01",
+          "document_id": "D10",
+          "source_filename": "D10_binhe_community_evacuation_plan.txt",
+          "evidence_text": "滨河社区集中安置点为海州市第三中学体育馆。",
+          "start_char": 1613,
+          "end_char": 1634,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q18-E02",
+          "document_id": "D10",
+          "source_filename": "D10_binhe_community_evacuation_plan.txt",
+          "evidence_text": "主要转移路线为滨河路向西进入新华路，再前往海州市第三中学。",
+          "start_char": 1997,
+          "end_char": 2026,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 3
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q19",
+      "category": "multi_hop",
+      "question": "暴雨红色预警由谁发布，是否由该部门直接决定启动防汛响应和道路封闭？",
+      "answerable": true,
+      "reference_answer": "红色预警由海州市气象局发布；气象局不直接决定防汛响应或道路封闭，响应由市防汛抗旱指挥部综合会商决定。",
+      "required_facts": [
+        "气象局发布红色预警",
+        "气象局不直接封路",
+        "响应由指挥部决定"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q19-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "2026年7月22日14时00分，海州市气象局发布暴雨红色预警信号，预警编号为M-2026-0722-R。",
+          "start_char": 502,
+          "end_char": 555,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q19-E02",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "气象局负责发布气象预警，但不直接发布道路封闭命令；是否启动防汛应急响应由市防汛抗旱指挥部综合会商决定。",
+          "start_char": 2415,
+          "end_char": 2466,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1,
+            2
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 6
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q20",
+      "category": "multi_hop",
+      "question": "龙门站16时30分水位是多少，东江河洪水风险主要影响哪些区域？",
+      "answerable": true,
+      "reference_answer": "16时30分实测27.8米；风险主要影响临河区沿江街道、滨河社区和部分低洼仓储区。",
+      "required_facts": [
+        "16:30实测27.8米",
+        "主要影响区域"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q20-E01",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "2026年7月22日16时30分，龙门站实测水位为27.8米，警戒水位为27.5米，保证水位为28.5米。",
+          "start_char": 479,
+          "end_char": 532,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q20-E02",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "东江河洪水风险主要影响临河区沿江街道、滨河社区和部分低洼仓储区。",
+          "start_char": 1626,
+          "end_char": 1658,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q21",
+      "category": "multi_hop",
+      "question": "本次城市排水投入了哪些主要设备，达到道路封控阈值后由谁实施封闭？",
+      "answerable": true,
+      "reference_answer": "启用12座固定泵站、48台移动排水泵和8辆泵车；达到阈值后由公安交警支队实施道路封闭。",
+      "required_facts": [
+        "排水设备投入",
+        "交警实施道路封闭"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q21-E01",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "本次响应启用12座固定排水泵站、48台移动排水泵和8辆大流量泵车。",
+          "start_char": 840,
+          "end_char": 873,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q21-E02",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "排水部门负责积水监测和抽排，达到交通封控阈值后由公安交警支队实施道路封闭。",
+          "start_char": 2339,
+          "end_char": 2376,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q22",
+      "category": "multi_hop",
+      "question": "第一人民医院有哪些应急供电能力，医院周边排水和内部医疗决策分别由谁负责？",
+      "answerable": true,
+      "reference_answer": "医院配置两台应急柴油发电机；周边移动排水由住建部门优先保障，内部医疗决策由院方负责。",
+      "required_facts": [
+        "两台应急柴油发电机",
+        "住建保障外部排水",
+        "院方负责内部医疗"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q22-E01",
+          "document_id": "D09",
+          "source_filename": "D09_first_people_hospital_flood_plan.txt",
+          "evidence_text": "海州市第一人民医院配置两台应急柴油发电机，关键负荷可在市电中断后切换至应急供电。",
+          "start_char": 474,
+          "end_char": 514,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q22-E02",
+          "document_id": "D09",
+          "source_filename": "D09_first_people_hospital_flood_plan.txt",
+          "evidence_text": "住建部门将医院周边列为移动排水优先保障点，但医院内部医疗决策仍由院方负责。",
+          "start_char": 1621,
+          "end_char": 1658,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1,
+            2
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q23",
+      "category": "multi_hop",
+      "question": "本轮组建了多少支水域救援分队，重点救援任务有哪些？",
+      "answerable": true,
+      "reference_answer": "共6支；重点关注滨河社区人员转移、人民路下穿隧道车辆被困风险和沿河低洼区域。",
+      "required_facts": [
+        "6支水域救援分队",
+        "三类重点救援任务"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q23-E01",
+          "document_id": "D16",
+          "source_filename": "D16_fire_rescue_deployment.txt",
+          "evidence_text": "海州市消防救援支队在Ⅱ级响应后组建6支水域救援分队。",
+          "start_char": 2699,
+          "end_char": 2725,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            },
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q23-E02",
+          "document_id": "D16",
+          "source_filename": "D16_fire_rescue_deployment.txt",
+          "evidence_text": "滨河社区人员转移、人民路下穿隧道车辆被困风险和沿河低洼区域是重点救援任务。",
+          "start_char": 1577,
+          "end_char": 1614,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q24",
+      "category": "multi_hop",
+      "question": "E-2026-07-22事件的预警与响应时间是什么，阶段性报告能否给出最终死亡人数和经济损失？",
+      "answerable": true,
+      "reference_answer": "14时发布红色预警、15时启动Ⅱ级响应；阶段性报告只说明当时未确认死亡，最终直接经济损失和完整受灾人口尚未统计，最终死亡人数也不能据此确定。",
+      "required_facts": [
+        "14时预警15时响应",
+        "阶段性未确认死亡",
+        "最终损失和人数未统计"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q24-E01",
+          "document_id": "D18",
+          "source_filename": "D18_incident_20260722_report.txt",
+          "evidence_text": "E-2026-07-22事件中，14时发布暴雨红色预警，15时启动防汛Ⅱ级应急响应。",
+          "start_char": 503,
+          "end_char": 545,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q24-E02",
+          "document_id": "D18",
+          "source_filename": "D18_incident_20260722_report.txt",
+          "evidence_text": "截至阶段性报告形成时未确认人员死亡，最终直接经济损失和完整受灾人口仍未统计。",
+          "start_char": 2777,
+          "end_char": 2815,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1,
+            2
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_parent",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q25",
+      "category": "constraint",
+      "question": "青云水库本次下泄流量是多少，并要求哪些区域加强沿河巡查？",
+      "answerable": true,
+      "reference_answer": "下泄流量350立方米/秒，并要求临河区和江北区加强沿河巡查。",
+      "required_facts": [
+        "下泄350立方米/秒",
+        "临河区和江北区巡查"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q25-E01",
+          "document_id": "D05",
+          "source_filename": "D05_qingyun_reservoir_dispatch.txt",
+          "evidence_text": "2026年7月22日17时30分，海州市水务局将青云水库下泄流量调整至350立方米/秒。",
+          "start_char": 460,
+          "end_char": 504,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q25-E02",
+          "document_id": "D05",
+          "source_filename": "D05_qingyun_reservoir_dispatch.txt",
+          "evidence_text": "调度指令同时通知临河区和江北区加强沿河巡查。",
+          "start_char": 844,
+          "end_char": 866,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q26",
+      "category": "constraint",
+      "question": "城市排水防涝调度由谁当班负责，本次投入哪些主要排水设备？",
+      "answerable": true,
+      "reference_answer": "赵宁负责当班调度；投入12座固定泵站、48台移动排水泵和8辆大流量泵车。",
+      "required_facts": [
+        "赵宁负责",
+        "三类设备投入"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q26-E01",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "海州市城市排水防涝调度中心隶属市住房城乡建设局，由赵宁负责当班调度。",
+          "start_char": 467,
+          "end_char": 501,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q26-E02",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "本次响应启用12座固定排水泵站、48台移动排水泵和8辆大流量泵车。",
+          "start_char": 840,
+          "end_char": 873,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q27",
+      "category": "constraint",
+      "question": "滨江站受影响出入口的积水控制条件是什么，18时05分A口外实际积水是多少？",
+      "answerable": true,
+      "reference_answer": "控制条件为外部道路积水达到15厘米且仍有上涨趋势；18时05分A口外实际积水为16厘米。",
+      "required_facts": [
+        "出入口控制条件为15厘米且上涨",
+        "18:05 A口外积水16厘米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q27-E01",
+          "document_id": "D08",
+          "source_filename": "D08_metro_binjing_station_flood_plan.txt",
+          "evidence_text": "滨江站外部道路积水达到15厘米且仍有上涨趋势时，运营单位应关闭受影响出入口。",
+          "start_char": 462,
+          "end_char": 500,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q27-E02",
+          "document_id": "D08",
+          "source_filename": "D08_metro_binjing_station_flood_plan.txt",
+          "evidence_text": "2026年7月22日18时05分，滨江站A口外积水达到16厘米。",
+          "start_char": 1006,
+          "end_char": 1038,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 6
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q28",
+      "category": "constraint",
+      "question": "教育局何时发布停课通知，哪些区域从几点起停止线下教学？",
+      "answerable": true,
+      "reference_answer": "15时30分发布；江北区、临河区和高新区北部从16时起停止线下教学。",
+      "required_facts": [
+        "15:30发布",
+        "三区16时起停课"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q28-E01",
+          "document_id": "D11",
+          "source_filename": "D11_school_suspension_notice.txt",
+          "evidence_text": "2026年7月22日15时30分，海州市教育局发布临时停课通知。",
+          "start_char": 468,
+          "end_char": 500,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q28-E02",
+          "document_id": "D11",
+          "source_filename": "D11_school_suspension_notice.txt",
+          "evidence_text": "江北区、临河区和高新区北部中小学及幼儿园自16时起停止线下教学。",
+          "start_char": 840,
+          "end_char": 872,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q29",
+      "category": "constraint",
+      "question": "一号仓可调拨多少艘橡皮艇，其中向临河区调拨多少艘？",
+      "answerable": true,
+      "reference_answer": "可调拨18艘，其中向临河区调拨8艘。",
+      "required_facts": [
+        "一号仓18艘",
+        "临河区8艘"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q29-E01",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "7月22日15时，一号仓可调拨编织袋20000只、救生衣1200件、橡皮艇18艘、移动照明设备80套。",
+          "start_char": 456,
+          "end_char": 507,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q29-E02",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "向临河区调拨橡皮艇8艘、救生衣400件。",
+          "start_char": 1013,
+          "end_char": 1033,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 6
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q30",
+      "category": "constraint",
+      "question": "临河区获得了多少救生衣和橡皮艇，同时前置了多少支消防水域救援分队？",
+      "answerable": true,
+      "reference_answer": "获得救生衣400件、橡皮艇8艘，同时前置2支水域救援分队。",
+      "required_facts": [
+        "临河物资调拨",
+        "临河前置2支分队"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q30-E01",
+          "document_id": "D20",
+          "source_filename": "D20_linhe_district_deployment_summary.txt",
+          "evidence_text": "市级一号仓向临河区调拨橡皮艇8艘、救生衣400件。",
+          "start_char": 1582,
+          "end_char": 1607,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q30-E02",
+          "document_id": "D20",
+          "source_filename": "D20_linhe_district_deployment_summary.txt",
+          "evidence_text": "消防救援支队有2支水域救援分队前置临河区。",
+          "start_char": 1969,
+          "end_char": 1990,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 3
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q31",
+      "category": "constraint",
+      "question": "哪些区域既属于暴雨红色预警重点区域，又被纳入中小学及幼儿园停课范围？",
+      "answerable": true,
+      "reference_answer": "江北区、临河区和高新区北部。",
+      "required_facts": [
+        "红色预警重点三区",
+        "停课范围三区"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q31-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "预警重点区域为江北区、临河区和高新区北部。",
+          "start_char": 895,
+          "end_char": 916,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q31-E02",
+          "document_id": "D11",
+          "source_filename": "D11_school_suspension_notice.txt",
+          "evidence_text": "江北区、临河区和高新区北部中小学及幼儿园自16时起停止线下教学。",
+          "start_char": 840,
+          "end_char": 872,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q32",
+      "category": "constraint",
+      "question": "哪些点位既属于排水设备优先投入对象，又被列为重点保电对象？",
+      "answerable": true,
+      "reference_answer": "第一人民医院和地铁2号线滨江站。",
+      "required_facts": [
+        "排水优先点位",
+        "重点保电对象"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q32-E01",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "排水设备优先投向人民路下穿隧道、地铁2号线滨江站周边、第一人民医院周边和临河区低洼片区。",
+          "start_char": 1597,
+          "end_char": 1641,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q32-E02",
+          "document_id": "D13",
+          "source_filename": "D13_power_emergency_plan.txt",
+          "evidence_text": "第一人民医院、地铁2号线滨江站、市防汛指挥中心和主要排水泵站被列为本轮重点保电对象。",
+          "start_char": 454,
+          "end_char": 496,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q33",
+      "category": "constraint",
+      "question": "哪些区域既获得橡皮艇调拨，又有消防水域救援分队前置？",
+      "answerable": true,
+      "reference_answer": "临河区和江北区。",
+      "required_facts": [
+        "临河区获得橡皮艇",
+        "江北区获得橡皮艇",
+        "两区均有水域救援分队前置"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q33-E01",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "向临河区调拨橡皮艇8艘、救生衣400件。",
+          "start_char": 1013,
+          "end_char": 1033,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 6
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q33-E02",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "向江北区调拨橡皮艇4艘、救生衣200件。",
+          "start_char": 1586,
+          "end_char": 1606,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q33-E03",
+          "document_id": "D16",
+          "source_filename": "D16_fire_rescue_deployment.txt",
+          "evidence_text": "2支分队前置临河区，2支分队前置江北区，1支分队在高新区北部待命，1支分队作为市级机动力量。",
+          "start_char": 974,
+          "end_char": 1020,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            2
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q34",
+      "category": "constraint",
+      "question": "洪涝监测平台接入的东江河水位来自什么站点，该站16时30分实测水位是多少？",
+      "answerable": true,
+      "reference_answer": "来自龙门水文站，16时30分实测27.8米。",
+      "required_facts": [
+        "平台接入龙门站水位",
+        "16:30实测27.8米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q34-E01",
+          "document_id": "D17",
+          "source_filename": "D17_flood_monitoring_platform.txt",
+          "evidence_text": "平台接入气象雷达和雨量站、东江河龙门水文站水位、重点易涝点积水传感器和泵站运行状态。",
+          "start_char": 1024,
+          "end_char": 1066,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q34-E02",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "2026年7月22日16时30分，龙门站实测水位为27.8米，警戒水位为27.5米，保证水位为28.5米。",
+          "start_char": 479,
+          "end_char": 532,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q35",
+      "category": "constraint",
+      "question": "哪些区域既是暴雨红色预警重点区域，又被青云水库调度要求加强沿河巡查？",
+      "answerable": true,
+      "reference_answer": "江北区和临河区。",
+      "required_facts": [
+        "红色预警重点区域",
+        "水库调度巡查区域"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q35-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "预警重点区域为江北区、临河区和高新区北部。",
+          "start_char": 895,
+          "end_char": 916,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q35-E02",
+          "document_id": "D05",
+          "source_filename": "D05_qingyun_reservoir_dispatch.txt",
+          "evidence_text": "调度指令同时通知临河区和江北区加强沿河巡查。",
+          "start_char": 844,
+          "end_char": 866,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q36",
+      "category": "constraint",
+      "question": "滨河社区集中安置到哪里，该安置点是否被列入通信保障关注区域？",
+      "answerable": true,
+      "reference_answer": "集中安置到海州市第三中学体育馆；滨河社区安置点被列入通信保障关注区域。",
+      "required_facts": [
+        "第三中学体育馆为安置点",
+        "滨河社区安置点是通信保障关注区域"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q36-E01",
+          "document_id": "D10",
+          "source_filename": "D10_binhe_community_evacuation_plan.txt",
+          "evidence_text": "滨河社区集中安置点为海州市第三中学体育馆。",
+          "start_char": 1613,
+          "end_char": 1634,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q36-E02",
+          "document_id": "D14",
+          "source_filename": "D14_telecom_emergency_plan.txt",
+          "evidence_text": "滨河社区安置点、人民路下穿隧道周边和地铁滨江站被列为通信保障关注区域。",
+          "start_char": 974,
+          "end_char": 1009,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q37",
+      "category": "distractor",
+      "question": "暴雨红色预警是否等于已经自动启动Ⅰ级防汛响应？",
+      "answerable": true,
+      "reference_answer": "不等于。响应级别由市防汛抗旱指挥部依据预案和综合会商决定。",
+      "required_facts": [
+        "红色预警不等于自动Ⅰ级"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q37-E01",
+          "document_id": "D01",
+          "source_filename": "D01_flood_command_structure.txt",
+          "evidence_text": "红色暴雨预警本身不等于自动启动Ⅰ级响应，响应级别由海州市防汛抗旱指挥部依据预案和综合会商决定。",
+          "start_char": 2382,
+          "end_char": 2429,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q38",
+      "category": "distractor",
+      "question": "向临河区调拨橡皮艇是否能直接证明该区已经发生人员被困？",
+      "answerable": true,
+      "reference_answer": "不能。物资调拨只表示提高准备程度，不直接代表已经发生人员被困。",
+      "required_facts": [
+        "物资调拨不直接等于人员被困"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q38-E01",
+          "document_id": "D15",
+          "source_filename": "D15_emergency_materials_warehouse.txt",
+          "evidence_text": "物资调拨表示提高准备程度，不直接代表相关区域已经发生人员被困。",
+          "start_char": 2648,
+          "end_char": 2679,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            },
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 1
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q39",
+      "category": "distractor",
+      "question": "阶段性报告写“未确认人员死亡”，是否可以据此认定最终死亡人数为0？",
+      "answerable": true,
+      "reference_answer": "不能。阶段性状态不能替代事件终报的最终死亡人数。",
+      "required_facts": [
+        "阶段性未确认死亡不能推出最终为0"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q39-E01",
+          "document_id": "D18",
+          "source_filename": "D18_incident_20260722_report.txt",
+          "evidence_text": "截至阶段性报告形成时未确认人员死亡，最终直接经济损失和完整受灾人口仍未统计。",
+          "start_char": 2777,
+          "end_char": 2815,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            2
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 2,
+              "child_index_in_parent": 0
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "child_sufficient",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q40",
+      "category": "distractor",
+      "question": "人民路下穿隧道的封控阈值和恢复通行阈值是否相同？",
+      "answerable": true,
+      "reference_answer": "不同。20厘米触发封控；恢复需低于10厘米并连续30分钟且现场确认安全。",
+      "required_facts": [
+        "封控20厘米",
+        "恢复低于10厘米持续30分钟"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q40-E01",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "人民路下穿隧道积水深度达到20厘米时，应启动道路封控程序。",
+          "start_char": 462,
+          "end_char": 491,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q40-E02",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "当积水低于10厘米并连续保持30分钟，且排水和交警现场确认安全后，方可恢复通行。",
+          "start_char": 830,
+          "end_char": 870,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q41",
+      "category": "distractor",
+      "question": "滨江站A口18时05分积水16厘米，是否因为“低于15厘米阈值”而不需要关注出入口控制？",
+      "answerable": true,
+      "reference_answer": "不是。16厘米已经高于15厘米数值阈值；完整控制条件还要求积水仍有上涨趋势。",
+      "required_facts": [
+        "滨江站控制条件为15厘米且上涨",
+        "18:05 A口外积水16厘米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q41-E01",
+          "document_id": "D08",
+          "source_filename": "D08_metro_binjing_station_flood_plan.txt",
+          "evidence_text": "滨江站外部道路积水达到15厘米且仍有上涨趋势时，运营单位应关闭受影响出入口。",
+          "start_char": 462,
+          "end_char": 500,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q41-E02",
+          "document_id": "D08",
+          "source_filename": "D08_metro_binjing_station_flood_plan.txt",
+          "evidence_text": "2026年7月22日18时05分，滨江站A口外积水达到16厘米。",
+          "start_char": 1006,
+          "end_char": 1038,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 6
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q42",
+      "category": "distractor",
+      "question": "龙门站19时达到28.2米后，23时是否仍继续上涨？",
+      "answerable": true,
+      "reference_answer": "没有继续上涨。23时已回落到27.7米，但仍高于27.5米警戒水位。",
+      "required_facts": [
+        "19时最高28.2米",
+        "23时回落到27.7米且仍高于警戒水位"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q42-E01",
+          "document_id": "D19",
+          "source_filename": "D19_flood_season_water_level_statistics.txt",
+          "evidence_text": "7月22日19时龙门站水位达到28.2米，为本组记录最高值。",
+          "start_char": 1613,
+          "end_char": 1643,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q42-E02",
+          "document_id": "D19",
+          "source_filename": "D19_flood_season_water_level_statistics.txt",
+          "evidence_text": "7月22日23时龙门站水位为27.7米，仍高于27.5米警戒水位。",
+          "start_char": 2184,
+          "end_char": 2217,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 5
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "same_parent_multi_child",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q43",
+      "category": "distractor",
+      "question": "气象局发布红色预警后，是否可以直接命令关闭人民路下穿隧道？",
+      "answerable": true,
+      "reference_answer": "不能。气象局不直接发布道路封闭命令；人民路实际封闭由公安交警支队实施。",
+      "required_facts": [
+        "气象局不直接封路",
+        "人民路由交警完成封闭"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q43-E01",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "气象局负责发布气象预警，但不直接发布道路封闭命令；是否启动防汛应急响应由市防汛抗旱指挥部综合会商决定。",
+          "start_char": 2415,
+          "end_char": 2466,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 6
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q43-E02",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "17时20分，海州市公安交警支队完成人民路下穿隧道双向道路封闭。",
+          "start_char": 1990,
+          "end_char": 2022,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q44",
+      "category": "distractor",
+      "question": "青云水库下泄350立方米/秒后，滨河社区是否因此必须立即全面转移？",
+      "answerable": true,
+      "reference_answer": "不一定。水库调度不直接触发全面转移；滨河社区仍需满足龙门站28.0米并继续上涨或收到明确转移指令。",
+      "required_facts": [
+        "水库调度不直接等于转移",
+        "社区有独立转移条件"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q44-E01",
+          "document_id": "D05",
+          "source_filename": "D05_qingyun_reservoir_dispatch.txt",
+          "evidence_text": "下游人员转移仍按属地方案和明确转移指令执行，不能仅根据“泄洪”字样判断必须立即撤离。",
+          "start_char": 1589,
+          "end_char": 1631,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q44-E02",
+          "document_id": "D10",
+          "source_filename": "D10_binhe_community_evacuation_plan.txt",
+          "evidence_text": "滨河社区转移条件为龙门站水位达到28.0米并继续上涨，或者收到市、区防汛指挥机构明确转移指令。",
+          "start_char": 468,
+          "end_char": 515,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q45",
+      "category": "distractor",
+      "question": "水务预警中预测峰值约28.2米，是否表示16时30分已经实测到28.2米？后续统计何时才记录到28.2米？",
+      "answerable": true,
+      "reference_answer": "不是。16时30分实测27.8米；后续水位统计在19时记录到28.2米。",
+      "required_facts": [
+        "16:30实测27.8米",
+        "预测峰值约28.2米",
+        "19时实测记录28.2米"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q45-E01",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "2026年7月22日16时30分，龙门站实测水位为27.8米，警戒水位为27.5米，保证水位为28.5米。",
+          "start_char": 479,
+          "end_char": 532,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 2
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q45-E02",
+          "document_id": "D04",
+          "source_filename": "D04_dongjiang_river_flood_warning.txt",
+          "evidence_text": "预计龙门站洪峰将在19时左右出现，预测峰值约28.2米。",
+          "start_char": 872,
+          "end_char": 900,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            },
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 5
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q45-E03",
+          "document_id": "D19",
+          "source_filename": "D19_flood_season_water_level_statistics.txt",
+          "evidence_text": "7月22日19时龙门站水位达到28.2米，为本组记录最高值。",
+          "start_char": 1613,
+          "end_char": 1643,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            2
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            },
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 2
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q46",
+      "category": "distractor",
+      "question": "网络所说“全市所有学校停课三天”是否能由本轮红色预警范围支持？",
+      "answerable": true,
+      "reference_answer": "不能。正式停课信息只覆盖江北区、临河区和高新区北部，网络说法未经正式通知不能视为事实。",
+      "required_facts": [
+        "全市停课三天说法无正式依据",
+        "红色预警重点仅三个区域"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q46-E01",
+          "document_id": "D11",
+          "source_filename": "D11_school_suspension_notice.txt",
+          "evidence_text": "社交媒体中“全市所有学校停课三天”的说法如果没有正式通知，不应视为事实。",
+          "start_char": 1598,
+          "end_char": 1634,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 1
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q46-E02",
+          "document_id": "D02",
+          "source_filename": "D02_meteorological_red_warning_20260722.txt",
+          "evidence_text": "预警重点区域为江北区、临河区和高新区北部。",
+          "start_char": 895,
+          "end_char": 916,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q47",
+      "category": "distractor",
+      "question": "洪涝监测平台显示预警后，是否可以替代气象局和交警分别发布气象预警与道路封控？",
+      "answerable": true,
+      "reference_answer": "不能。平台只展示相关状态；气象预警和道路封控分别由气象局和公安交警部门按职责发布。",
+      "required_facts": [
+        "平台不能替代专业部门发布",
+        "气象与道路封控职责分属气象局和交警"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q47-E01",
+          "document_id": "D17",
+          "source_filename": "D17_flood_monitoring_platform.txt",
+          "evidence_text": "平台可以展示已发布预警，但不替代气象局发布气象预警，也不替代公安交警发布道路封控。",
+          "start_char": 2334,
+          "end_char": 2375,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 5
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q47-E02",
+          "document_id": "D01",
+          "source_filename": "D01_flood_command_structure.txt",
+          "evidence_text": "市气象局负责气象预警，市水务局负责水文预警，市住房城乡建设局负责城市排水，市公安交警支队负责道路封控。",
+          "start_char": 864,
+          "end_char": 915,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            0
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 0,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q48",
+      "category": "distractor",
+      "question": "排水部门负责人民路积水监测，是否意味着道路正式封闭也由排水部门发布？",
+      "answerable": true,
+      "reference_answer": "不是。排水部门负责监测和抽排，人民路正式封闭由公安交警支队实施。",
+      "required_facts": [
+        "排水部门负责监测抽排",
+        "交警完成人民路封闭"
+      ],
+      "gold_evidence": [
+        {
+          "evidence_id": "Q48-E01",
+          "document_id": "D06",
+          "source_filename": "D06_urban_drainage_dispatch.txt",
+          "evidence_text": "排水部门负责积水监测和抽排，达到交通封控阈值后由公安交警支队实施道路封闭。",
+          "start_char": 2339,
+          "end_char": 2376,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            0
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 5
+            }
+          ]
+        },
+        {
+          "evidence_id": "Q48-E02",
+          "document_id": "D07",
+          "source_filename": "D07_renmin_road_underpass_control.txt",
+          "evidence_text": "17时20分，海州市公安交警支队完成人民路下穿隧道双向道路封闭。",
+          "start_char": 1990,
+          "end_char": 2022,
+          "exact_match_count": 1,
+          "supports_fact_indices": [
+            1
+          ],
+          "validation_parent_indices": [
+            1
+          ],
+          "validation_child_locations": [
+            {
+              "parent_index": 1,
+              "child_index_in_parent": 4
+            }
+          ]
+        }
+      ],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "cross_document",
+      "pc_case_type": null,
+      "mapping_status": "pending_real_pipeline_ids"
+    },
+    {
+      "question_id": "Q49",
+      "category": "abstention",
+      "question": "本次事件最终直接经济损失是多少？",
+      "answerable": false,
+      "reference_answer": "现有语料未给出最终直接经济损失，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q50",
+      "category": "abstention",
+      "question": "本次事件最终受灾人口是多少？",
+      "answerable": false,
+      "reference_answer": "现有语料未给出最终受灾人口，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q51",
+      "category": "abstention",
+      "question": "海州市市长姓名是什么？",
+      "answerable": false,
+      "reference_answer": "语料未记录市长姓名，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q52",
+      "category": "abstention",
+      "question": "青云水库总库容是多少？",
+      "answerable": false,
+      "reference_answer": "语料未给出青云水库总库容，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q53",
+      "category": "abstention",
+      "question": "第一人民医院7月22日共有多少住院患者？",
+      "answerable": false,
+      "reference_answer": "语料未记录当日住院人数，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q54",
+      "category": "abstention",
+      "question": "洪涝监测平台管理员密码是什么？",
+      "answerable": false,
+      "reference_answer": "语料不提供管理员密码，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q55",
+      "category": "abstention",
+      "question": "人民路下穿隧道最终几点恢复通行？",
+      "answerable": false,
+      "reference_answer": "现有语料未记录最终恢复通行时间，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q56",
+      "category": "abstention",
+      "question": "滨江站A口最终几点重新开放？",
+      "answerable": false,
+      "reference_answer": "现有语料未记录A口最终恢复时间，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q57",
+      "category": "abstention",
+      "question": "本次暴雨过程全市最终累计降雨量是多少？",
+      "answerable": false,
+      "reference_answer": "语料未提供全市最终累计降雨量，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q58",
+      "category": "abstention",
+      "question": "本次事件最终确认死亡人数是多少？",
+      "answerable": false,
+      "reference_answer": "阶段性材料不能确定事件终报中的最终死亡人数。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q59",
+      "category": "abstention",
+      "question": "一号仓物资采购单价是多少？",
+      "answerable": false,
+      "reference_answer": "语料未记录采购单价，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    },
+    {
+      "question_id": "Q60",
+      "category": "abstention",
+      "question": "滨河社区居民手机号码清单是什么？",
+      "answerable": false,
+      "reference_answer": "语料未提供居民手机号清单，无法确定。",
+      "required_facts": [],
+      "gold_evidence": [],
+      "gold_child_ids": [],
+      "gold_parent_ids": [],
+      "designed_pc_case_type": "abstention",
+      "pc_case_type": "abstention",
+      "mapping_status": "abstention"
+    }
+  ],
+  "notes": [
+    "Evidence offsets refer to the final v3 corpus.",
+    "validation_parent_indices and validation_child_locations are pre-run fixture checks only.",
+    "gold_child_ids/gold_parent_ids remain empty until the real ingestion pipeline creates runtime-stable IDs.",
+    "Paired A/B must keep Query, Child candidate pool, ranking, Top-K and Token Budget fixed; only Parent Expansion changes."
+  ]
+}

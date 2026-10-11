@@ -1,0 +1,44 @@
+{
+  "benchmark_id": "flood_emergency_20docs_60q_longdoc",
+  "benchmark_version": "3.0.0-final",
+  "domain": "urban_flood_emergency_management",
+  "synthetic_controlled_corpus": true,
+  "document_count": 20,
+  "question_count": 60,
+  "category_distribution": {
+    "single_hop": 12,
+    "multi_hop": 12,
+    "constraint": 12,
+    "distractor": 12,
+    "abstention": 12
+  },
+  "parent_child_case_distribution": {
+    "child_sufficient": 15,
+    "same_parent_multi_child": 15,
+    "cross_parent": 6,
+    "cross_document": 12,
+    "abstention": 12
+  },
+  "answerable_count": 48,
+  "abstention_count": 12,
+  "document_chinese_char_stats": {
+    "min": 2580,
+    "mean": 2639.3,
+    "max": 2702
+  },
+  "actual_chunk_shape": {
+    "parent_count_per_document": {
+      "3": 20
+    },
+    "child_count_min": 17,
+    "child_count_mean": 17.2,
+    "child_count_max": 18
+  },
+  "gold_evidence_count": 83,
+  "gold_evidence_parent_distribution": {
+    "0": 52,
+    "1": 24,
+    "2": 7
+  },
+  "status": "READY_FOR_PARENT_CHILD_AB"
+}

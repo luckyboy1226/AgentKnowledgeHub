@@ -1,0 +1,67 @@
+{
+  "status": "PASS",
+  "verdict": "READY_FOR_PARENT_CHILD_AB",
+  "checks": {
+    "document_count_20": true,
+    "question_count_60": true,
+    "question_ids_unique": true,
+    "filenames_unique": true,
+    "five_categories_each_12": true,
+    "answerable_48_abstention_12": true,
+    "documents_2500_to_4000_chinese_chars": true,
+    "title_abstract_keywords_complete": true,
+    "three_parents_per_document": true,
+    "parent_max_1400_respected": true,
+    "parent_child_case_mix_exact": true,
+    "gold_evidence_exact_unique": true,
+    "required_fact_coverage_complete": true,
+    "expected_sources_match_evidence": true,
+    "canonical_answers_cover_required_keywords": true,
+    "no_exact_duplicate_paragraphs": true,
+    "gold_evidence_spans_parent_0_1_2": true
+  },
+  "summary": {
+    "documents": 20,
+    "questions": 60,
+    "answerable": 48,
+    "abstention": 12,
+    "category_distribution": {
+      "single_hop": 12,
+      "multi_hop": 12,
+      "constraint": 12,
+      "distractor": 12,
+      "abstention": 12
+    },
+    "parent_child_case_distribution": {
+      "child_sufficient": 15,
+      "same_parent_multi_child": 15,
+      "cross_parent": 6,
+      "cross_document": 12,
+      "abstention": 12
+    },
+    "gold_evidence_count": 83,
+    "document_chinese_chars": {
+      "min": 2580,
+      "mean": 2639.3,
+      "max": 2702
+    },
+    "parent_count_per_document": {
+      "3": 20
+    },
+    "child_count_min_mean_max": [
+      17,
+      17.2,
+      18
+    ],
+    "gold_evidence_parent_distribution": {
+      "0": 52,
+      "1": 24,
+      "2": 7
+    },
+    "duplicate_paragraph_groups": 0,
+    "evidence_errors": [],
+    "fact_coverage_errors": [],
+    "source_mismatches": [],
+    "keyword_errors": []
+  }
+}

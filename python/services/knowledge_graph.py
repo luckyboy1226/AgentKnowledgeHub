@@ -393,6 +393,19 @@ class KnowledgeGraphService:
     async def delete_document_version(self, document_id: str, version: int) -> int:
         return await self._execute_write(self._delete_document_version_tx, str(document_id), int(version))
 
+    async def list_document_versions(self, document_id: str, version: int) -> list[dict]:
+        """Read exact version provenance without broad document or source scans."""
+        return await self.execute_cypher(
+            """
+            MATCH (dv:DocumentVersion {document_id: $document_id, document_version: $version})
+            RETURN dv.document_id AS document_id, dv.document_version AS document_version,
+                   dv.content_hash AS content_hash, dv.source AS source,
+                   dv.status AS status, dv.is_current AS is_current
+            ORDER BY dv.document_version
+            """,
+            {"document_id": str(document_id), "version": int(version)},
+        )
+
     async def _delete_document_version_tx(self, tx: Any, document_id: str, version: int) -> int:
         records = await (await tx.run(
             """

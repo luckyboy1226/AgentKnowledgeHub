@@ -1,5 +1,6 @@
 """Lazy runtime adapters for Phase G; construction performs zero I/O."""
 from __future__ import annotations
+import hashlib
 import uuid
 from typing import Any
 from services.hybrid_retrieval_v2_real_evaluation import GRAPH_VARIANTS
@@ -32,7 +33,7 @@ class HybridRetrievalV2RealRuntime:
     async def retry_failed_create_version(self, *, document_id, version, filename, content, failed_operation_id):
         operation_id=str(uuid.uuid4()); self.last_ingestion_operation={'logical_key':'D04','operation_id':operation_id}
         result=await self._coordinator_factory().retry_failed_create_version(document_id=document_id,version=int(version),filename=filename,content=content,failed_operation_id=failed_operation_id,recovery_operation_id=operation_id)
-        return {'document_id':result['document_id'],'version':result.get('version'),'status':result.get('status'),'content_hash':result.get('content_hash'),'source':filename,'operation_id':operation_id}
+        return {'document_id':result['document_id'],'version':result.get('version'),'status':result.get('status'),'content_hash':result.get('content_hash'),'source':filename,'operation_id':operation_id,'graph_evidence_keys':list(result.get('graph_evidence_keys') or [])}
     async def verify_document(self,document_id):
         s=self._services_factory(); return await s.verify_document(document_id)
     async def verify_scope(self,allow):
@@ -41,6 +42,24 @@ class HybridRetrievalV2RealRuntime:
     async def verify_recovery_identity(self, *, logical_key, source, document_id, operation_id):
         s=self._services_factory()
         return await s.verify_recovery_identity(logical_key=logical_key, source=source, document_id=document_id, operation_id=operation_id)
+    async def verify_failed_retry_preconditions(self, *, document_id, version, failed_operation_id):
+        s=self._services_factory()
+        return await s.verify_failed_retry_preconditions(document_id=document_id, version=version,
+                                                          failed_operation_id=failed_operation_id)
+    async def inspect_failed_graph_reconciliation(self, *, document_id, version, failed_operation_id):
+        s=self._services_factory()
+        return await s.inspect_failed_graph_reconciliation(
+            document_id=document_id, version=version, failed_operation_id=failed_operation_id,
+        )
+    async def reconcile_failed_graph_stage(self, *, document_id, version, failed_operation_id,
+                                           expected_evidence_keys, expected_evidence_hash,
+                                           reconciliation_operation_id):
+        return await self._coordinator_factory().reconcile_failed_graph_stage(
+            document_id=document_id, version=version, failed_operation_id=failed_operation_id,
+            expected_evidence_keys=list(expected_evidence_keys),
+            expected_evidence_hash=expected_evidence_hash,
+            reconciliation_operation_id=reconciliation_operation_id,
+        )
     async def build_query_plan(self,question,run_id):
         builder=self._plan_factory(); self.audit.query_plan_llm_calls+=2; plan=await builder.build_evaluation_query_plan(question['question'],run_id=run_id,question_id=question['question_id'])
         return {'question_id':plan.question_id,'queries':list(plan.queries) or [plan.normalized_query],'entities':list(plan.entities),'keywords':list(plan.keywords),'intent':getattr(plan.intent,'value',plan.intent)}
@@ -118,6 +137,12 @@ class RealRuntimeStorageVerifier:
             and row.get("content_hash") == version_row.get("content_hash")
             for row in graph_rows
         )
+        evidence_rows = await self.graph.list_document_evidence(str(document_id), version) if version else []
+        evidence_keys = [str(row.get("evidence_key") or "") for row in evidence_rows]
+        graph_evidence_current = bool(evidence_rows) and all(
+            key and row.get("status") == "ready" and row.get("is_current") is True
+            for key, row in zip(evidence_keys, evidence_rows)
+        ) and len(evidence_keys) == len(set(evidence_keys))
         children = [row for row in catalog if row.get("kind") == "child"]
         bm25_current = bool(children) and all(self.bm25._eligible(row) for row in children)
         parents = sorted((row for row in catalog if row.get("kind") == "parent"),
@@ -136,8 +161,116 @@ class RealRuntimeStorageVerifier:
         }
         return {"ready": ready, "current": ready, "parents_ready": parents_ready,
                 "children_ready": children_ready, "vectors_current": vectors_current,
-                "graph_provenance_current": graph_provenance_current, "bm25_current": bm25_current,
+                "graph_provenance_current": graph_provenance_current,
+                "graph_evidence_current": graph_evidence_current,
+                "graph_evidence_keys": sorted(evidence_keys), "bm25_current": bm25_current,
                 "parent_child_stats": parent_child_stats}
+
+    async def verify_failed_retry_preconditions(self, *, document_id: str, version: int,
+                                                  failed_operation_id: str) -> dict[str, Any]:
+        """Read exact D04 identities and fail closed before a retry reserves them."""
+        document_id, version = str(document_id), int(version)
+        document = self.registry.find(document_id)
+        version_rows = self.registry.versions_for(document_id)
+        version_row = next((row for row in version_rows if int(row.get("version") or 0) == version), None)
+        failed = self.registry.operations.find_one({"operation_id": str(failed_operation_id)}, {"_id": 0})
+        active = list(self.registry.operations.find({
+            "document_id": document_id, "status": {"$in": ["pending", "running", "compensating"]},
+        }, {"_id": 0, "operation_id": 1, "status": 1}))
+        lock = self.registry.operation_locks.find_one({"document_id": document_id}, {"_id": 0})
+        catalog = list(self.chunks.collection.find({
+            "document_id": document_id, "document_version": version,
+        }, {"_id": 0, "kind": 1, "status": 1, "is_current": 1}))
+        vectors = self.vectors._version_records(document_id, version)
+        graph_versions = await self.graph.execute_cypher(
+            """
+            MATCH (dv:DocumentVersion {document_id: $document_id, document_version: $version})
+            RETURN dv.status AS status, dv.is_current AS is_current
+            """, {"document_id": document_id, "version": version},
+        )
+        graph_evidence = await self.graph.list_document_evidence(document_id, version)
+        checks = {
+            "document_failed_no_current": bool(document and document.get("status") == "failed"
+                                                and document.get("current_version") is None),
+            "exact_failed_version_one": bool(version_row and version == 1 and version_row.get("status") == "failed"
+                                               and version_row.get("is_current") is not True),
+            "single_version_only": len(version_rows) == 1,
+            "original_operation_failed": bool(failed and failed.get("operation_type") == "create"
+                                               and failed.get("status") == "failed"
+                                               and str(failed.get("document_id")) == document_id
+                                               and int(failed.get("version") or 0) == version),
+            "no_active_operation": not active,
+            "no_document_lock": lock is None,
+            "no_chunk_catalog_rows": not catalog,
+            "no_vector_rows": not vectors,
+            "no_graph_version_rows": not graph_versions,
+            "no_graph_evidence_rows": not graph_evidence,
+        }
+        return {"document_id": document_id, "version": version,
+                "failed_operation_id": str(failed_operation_id), "checks": checks,
+                "active_operations": active, "lock_present": lock is not None,
+                "counts": {"catalog": len(catalog), "vectors": len(vectors),
+                           "graph_versions": len(graph_versions), "graph_evidence": len(graph_evidence)},
+                "passed": all(checks.values())}
+
+    async def inspect_failed_graph_reconciliation(self, *, document_id: str, version: int,
+                                                   failed_operation_id: str) -> dict[str, Any]:
+        """Inspect one exact legacy graph stage; never scans by source or namespace."""
+        document_id, version = str(document_id), int(version)
+        document = self.registry.find(document_id)
+        version_rows = self.registry.versions_for(document_id)
+        version_row = next((row for row in version_rows if int(row.get("version") or 0) == version), None)
+        failed = self.registry.operations.find_one({"operation_id": str(failed_operation_id)}, {"_id": 0})
+        active = list(self.registry.operations.find({
+            "document_id": document_id, "status": {"$in": ["pending", "running", "compensating"]},
+        }, {"_id": 0, "operation_id": 1, "status": 1}))
+        lock = self.registry.operation_locks.find_one({"document_id": document_id}, {"_id": 0})
+        catalog_count = self.chunks.count_version(document_id, version)
+        vector_count = self.vectors.count_document_version(document_id, version)
+        graph_versions = await self.graph.list_document_versions(document_id, version)
+        evidence = await self.graph.list_document_evidence(document_id, version)
+        evidence_keys = [str(row.get("evidence_key") or "") for row in evidence]
+        evidence_hash = hashlib.sha256("\n".join(sorted(evidence_keys)).encode("utf-8")).hexdigest()
+        checks = {
+            "document_failed_no_current": bool(document and document.get("status") == "failed"
+                                                and document.get("current_version") is None),
+            "exact_failed_version_one": bool(version == 1 and version_row
+                                               and version_row.get("status") == "failed"
+                                               and version_row.get("is_current") is not True),
+            "single_version_only": len(version_rows) == 1,
+            "original_operation_failed": bool(failed and failed.get("operation_type") == "create"
+                                               and failed.get("status") == "failed"
+                                               and str(failed.get("document_id")) == document_id
+                                               and int(failed.get("version") or 0) == version),
+            "no_active_operation": not active,
+            "no_document_lock": lock is None,
+            "no_chunk_catalog_rows": catalog_count == 0,
+            "no_vector_rows": vector_count == 0,
+            "exactly_one_processing_graph_version": bool(
+                len(graph_versions) == 1
+                and graph_versions[0].get("status") == "processing"
+                and graph_versions[0].get("is_current") is False
+            ),
+            "graph_evidence_nonempty_unique": bool(evidence_keys and all(evidence_keys)
+                                                   and len(evidence_keys) == len(set(evidence_keys))),
+            "graph_evidence_processing_not_current": bool(evidence and all(
+                row.get("status") == "processing" and row.get("is_current") is False for row in evidence
+            )),
+        }
+        return {
+            "document_id": document_id,
+            "version": version,
+            "failed_operation_id": str(failed_operation_id),
+            "checks": checks,
+            "passed": all(checks.values()),
+            "active_operations": active,
+            "lock_present": lock is not None,
+            "counts": {"catalog": catalog_count, "vectors": vector_count,
+                       "graph_versions": len(graph_versions), "graph_evidence": len(evidence)},
+            "graph_versions": graph_versions,
+            "graph_evidence_keys": sorted(evidence_keys),
+            "graph_evidence_identity_hash": evidence_hash,
+        }
 
     async def verify_scope(self, allow: frozenset[str]) -> dict[str, bool]:
         if not allow:
